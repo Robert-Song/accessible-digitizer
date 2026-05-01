@@ -572,33 +572,33 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/75 backdrop-blur-md p-0 lg:p-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-white p-0 lg:p-8"
     >
-      <div className="bg-white w-full max-w-7xl h-full lg:h-[95vh] shadow-[12px_12px_0_#18181b] flex flex-col overflow-hidden border-2 border-zinc-900">
+      <div className="bg-white w-full max-w-7xl h-full lg:h-[95vh] flex flex-col overflow-hidden border border-black">
         {/* Header */}
-        <div className="p-6 border-b-2 border-zinc-900 flex items-center justify-between bg-white">
+        <div className="p-6 border-b border-black flex items-center justify-between bg-white">
           <div className="flex items-center gap-4">
-            <div className="bg-zinc-950 text-teal-300 p-2 border-2 border-zinc-900 shadow-[4px_4px_0_#14b8a6]">
+            <div className="bg-white text-black p-2 border border-black">
               <Pencil className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-mono text-xl font-black text-zinc-950 tracking-tight">
+              <h2 className="font-mono text-xl font-semibold text-black tracking-tight">
                 {figures.length > 1 ? `Batch Figure Editor (${figures.length} Selected)` : 'Figure Editor'}
               </h2>
-              <p className="font-mono text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+              <p className="font-mono text-[10px] text-neutral-600 font-bold uppercase tracking-widest">
                 {figures.length > 1 ? 'Applying changes to multiple figures' : 'Touch up your diagrams'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 border border-zinc-300 hover:border-zinc-900 transition-colors" aria-label="Close figure editor">
-            <X className="w-6 h-6 text-zinc-500" />
+          <button onClick={onClose} className="p-2 border border-black hover:bg-neutral-100 transition-colors" aria-label="Close figure editor">
+            <X className="w-6 h-6 text-black" />
           </button>
         </div>
 
         {/* Main Editor Area */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* Sidebar Controls */}
-          <div className="w-full lg:w-72 bg-slate-50 border-r border-slate-100 p-8 space-y-8 overflow-y-auto">
+          <div className="w-full lg:w-72 bg-white border-r border-black p-6 space-y-6 overflow-y-auto">
             {figures.length > 1 && (
               <section>
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Batch Navigation</h3>
@@ -636,11 +636,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
             )}
 
             <section>
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Source Selection</h3>
+              <h3 className="font-mono text-[10px] font-semibold text-neutral-600 uppercase tracking-widest mb-4">Source Selection</h3>
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   onClick={() => switchToSource(currentFigure.originalSrc)}
-                  className={`p-2 bg-white border rounded-xl flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === currentFigure.originalSrc ? 'border-purdue ring-2 ring-purdue/20' : 'border-slate-200 hover:border-purdue/50'}`}
+                  className={`p-2 bg-white border flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === currentFigure.originalSrc ? 'border-black' : 'border-neutral-300 hover:border-black'}`}
                 >
                   <div className="w-full aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-100">
                     <img src={currentFigure.originalSrc} alt="Original" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
@@ -649,7 +649,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
                 </button>
                 <button 
                   onClick={() => switchToSource(recreatedSrcs[currentFigure.id] || currentFigure.src)}
-                  className={`p-2 bg-white border rounded-xl flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === (recreatedSrcs[currentFigure.id] || currentFigure.src) ? 'border-purdue ring-2 ring-purdue/20' : 'border-slate-200 hover:border-purdue/50'}`}
+                  className={`p-2 bg-white border flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === (recreatedSrcs[currentFigure.id] || currentFigure.src) ? 'border-black' : 'border-neutral-300 hover:border-black'}`}
                 >
                   <div className="w-full aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-100">
                     <img src={recreatedSrcs[currentFigure.id] || currentFigure.src} alt="AI Generated" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
@@ -660,11 +660,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
             </section>
 
             <section className="space-y-3">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">AI Enhancement</h3>
+              <h3 className="font-mono text-[10px] font-semibold text-neutral-600 uppercase tracking-widest mb-4">AI Enhancement</h3>
               <button 
                 onClick={() => handleMagicRecreate(false)}
                 disabled={isRecreating || !imageAiAvailable}
-                className="w-full py-4 bg-gradient-to-br from-purdue to-slate-900 text-black font-bold rounded-2xl hover:brightness-95 shadow-xl shadow-purdue/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group"
+                className="w-full py-3 bg-white text-black border border-black font-semibold hover:bg-neutral-100 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group"
               >
                 {isRecreating ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -677,7 +677,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
                 <button 
                   onClick={() => handleMagicRecreate(true)}
                   disabled={isRecreating || !imageAiAvailable}
-                  className="w-full py-3 bg-white border border-purdue/30 text-purdue font-bold rounded-2xl hover:bg-purdue/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full py-3 bg-white border border-black text-black font-semibold hover:bg-neutral-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Recreate All Selected
@@ -689,67 +689,67 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
             </section>
 
             <section>
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Tools</h3>
+              <h3 className="font-mono text-[10px] font-semibold text-neutral-600 uppercase tracking-widest mb-4">Tools</h3>
               <div className="grid grid-cols-3 gap-2">
                 <button 
                   onClick={() => setMode('view')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'view' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'view' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <RotateCcw className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Reset</span>
                 </button>
                 <button 
                   onClick={() => setMode('adjust')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'adjust' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'adjust' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <SlidersHorizontal className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Adjust</span>
                 </button>
                 <button 
                   onClick={() => setMode('crop')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'crop' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'crop' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <Crop className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Crop</span>
                 </button>
                 <button 
                   onClick={() => setMode('draw')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'draw' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'draw' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <Pencil className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Draw</span>
                 </button>
                 <button 
                   onClick={() => setMode('text')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'text' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'text' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <Type className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Text</span>
                 </button>
                 <button 
                   onClick={() => setMode('graph')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'graph' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'graph' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <LineChart className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Graph</span>
                 </button>
                 <button 
                   onClick={() => setMode('ai-prompt')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'ai-prompt' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'ai-prompt' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <MessageSquareText className="w-5 h-5" />
                   <span className="text-[9px] font-bold">AI Prompt</span>
                 </button>
                 <button 
                   onClick={() => setMode('layout')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'layout' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'layout' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <Plus className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Layout</span>
                 </button>
                 <button 
                   onClick={() => setMode('accessibility')}
-                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'accessibility' ? 'bg-purdue text-black shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                  className={`p-3 flex flex-col items-center gap-2 transition-all border ${mode === 'accessibility' ? 'bg-black text-white border-black' : 'bg-white text-neutral-500 border-neutral-300 hover:border-black'}`}
                 >
                   <CheckCircle2 className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Alt Text</span>
@@ -1089,13 +1089,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
             <div className="pt-8 border-t border-slate-200 space-y-3">
               <button 
                 onClick={handleSave}
-                className="w-full py-4 bg-purdue text-black font-bold rounded-2xl hover:brightness-95 shadow-xl shadow-purdue/20 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-black text-white border border-black font-semibold hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2"
               >
                 <Save className="w-4 h-4" /> Save All Changes
               </button>
               <button 
                 onClick={handleDownload}
-                className="w-full py-4 bg-white border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-white border border-black text-black font-semibold hover:bg-neutral-100 transition-all flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" /> Download Current PNG
               </button>
@@ -1103,9 +1103,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
           </div>
 
           {/* Canvas Area */}
-          <div className="flex-1 bg-slate-200 p-12 overflow-y-auto relative" ref={containerRef}>
+          <div className="flex-1 bg-white p-8 overflow-y-auto relative" ref={containerRef}>
             <div 
-              className={`relative shadow-2xl rounded-lg overflow-hidden bg-white transition-all duration-300 ${alignments[currentFigure.id] === 'left' ? 'mr-auto' : alignments[currentFigure.id] === 'right' ? 'ml-auto' : 'mx-auto'}`}
+              className={`relative border border-black overflow-hidden bg-white transition-all duration-300 ${alignments[currentFigure.id] === 'left' ? 'mr-auto' : alignments[currentFigure.id] === 'right' ? 'ml-auto' : 'mx-auto'}`}
               style={{ width: widths[currentFigure.id] || '100%' }}
             >
               <canvas 

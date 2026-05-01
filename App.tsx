@@ -587,7 +587,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-100 text-zinc-950">
+    <div className="min-h-screen flex flex-col bg-white text-black">
       {(state.results.length > 0 || state.isProcessing) && (
         <Header onShowDocs={() => setShowHelp(true)} />
       )}
@@ -613,25 +613,25 @@ const App: React.FC = () => {
       )}
 
       {showResetWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 border border-slate-100">
-            <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-6 text-amber-600">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-white">
+          <div className="bg-white max-w-md w-full p-6 border border-black">
+            <div className="w-12 h-12 border border-black flex items-center justify-center mb-6 text-black">
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
             </div>
-            <h3 className="text-xl font-black text-slate-900 mb-2">Unsaved Changes</h3>
-            <p className="text-slate-600 mb-8 leading-relaxed">
+            <h3 className="text-xl font-semibold text-black mb-2">Unsaved Changes</h3>
+            <p className="text-neutral-700 mb-8 leading-relaxed">
               You haven't downloaded your digitized notes yet. Starting a new document will permanently discard your current work.
             </p>
             <div className="flex gap-3">
               <button 
                 onClick={() => setShowResetWarning(false)}
-                className="flex-1 py-3 px-4 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                className="flex-1 py-3 px-4 bg-white text-black border border-black font-semibold hover:bg-neutral-100 transition-colors"
               >
                 Go Back
               </button>
               <button 
                 onClick={performReset}
-                className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200"
+                className="flex-1 py-3 px-4 bg-black text-white border border-black font-semibold hover:bg-white hover:text-black transition-colors"
               >
                 Discard & Reset
               </button>
@@ -656,17 +656,17 @@ const App: React.FC = () => {
 
       <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-8" role="main">
         {state.error && (
-          <div className="mb-8 p-6 bg-red-50 border border-red-100 rounded-3xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 flex-shrink-0">
+          <div className="mb-8 p-5 bg-white border border-black flex items-start gap-4">
+            <div className="w-10 h-10 border border-black flex items-center justify-center text-black flex-shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             </div>
             <div>
-              <h3 className="font-black text-red-900 text-sm mb-1">{state.error.split('|')[0]}</h3>
-              <p className="text-red-700 text-xs leading-relaxed font-medium">{state.error.split('|')[1] || state.error}</p>
+              <h3 className="font-semibold text-black text-sm mb-1">{state.error.split('|')[0]}</h3>
+              <p className="text-neutral-700 text-xs leading-relaxed font-medium">{state.error.split('|')[1] || state.error}</p>
             </div>
             <button 
               onClick={() => reset()} 
-              className="ml-auto p-2 text-red-400 hover:text-red-600 transition-colors"
+              className="ml-auto p-2 text-black border border-black hover:bg-neutral-100 transition-colors"
               title="Clear Error"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>

@@ -10,7 +10,39 @@ export interface PdfImageData {
   width: number;
   height: number;
   orientation: 'portrait' | 'landscape';
+  extractedText?: string;
+  textSource?: 'pdfplumber';
 }
+
+const extractPdfTextWithPdfPlumber = async (file: File): Promise<{
+  pageNumber: number;
+  text: string;
+}[]> => {
+  try {
+    const response = await fetch('/api/pdf/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: await file.arrayBuffer()
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const detail = {
+        error: payload.error || response.statusText,
+        message: payload.message,
+        hint: payload.hint
+      };
+      console.warn('pdfplumber extraction unavailable:', JSON.stringify(detail, null, 2));
+      return [];
+    }
+
+    const payload = await response.json();
+    return Array.isArray(payload.pages) ? payload.pages : [];
+  } catch (error) {
+    console.warn('pdfplumber extraction failed; falling back to image-only PDF processing.', error);
+    return [];
+  }
+};
 
 export const pdfToImageData = async (file: File, optimize: boolean = false): Promise<PdfImageData[]> => {
   const fileType = file.type;
@@ -22,7 +54,11 @@ export const pdfToImageData = async (file: File, optimize: boolean = false): Pro
   // Handle PDF
   if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const [pdf, extractedPages] = await Promise.all([
+      window.pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise,
+      extractPdfTextWithPdfPlumber(file)
+    ]);
+    const extractedByPage = new Map(extractedPages.map(page => [page.pageNumber, page]));
     
     const pageIndices = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
     
@@ -40,12 +76,15 @@ export const pdfToImageData = async (file: File, optimize: boolean = false): Pro
       await page.render({ canvasContext: context, viewport }).promise;
       
       const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+      const extracted = extractedByPage.get(i);
       return { 
         base64, 
         canvas, 
         width: viewport.width, 
         height: viewport.height,
-        orientation: (viewport.width > viewport.height ? 'landscape' : 'portrait') as 'landscape' | 'portrait'
+        orientation: (viewport.width > viewport.height ? 'landscape' : 'portrait') as 'landscape' | 'portrait',
+        extractedText: extracted?.text,
+        textSource: extracted ? 'pdfplumber' as const : undefined
       };
     }));
 

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppState, ConversionResult, LanguageLevel } from '../types';
 import { pdfToImageData } from '../services/pdfService';
-import { convertBatchToHtml, refineLatex, repairAccessibility } from '../services/aiService';
+import { convertPageToHtml, refineLatex, repairAccessibility } from '../services/aiService';
 import { runAccessibilityAudit, sanitizeGeneratedHtml } from '../utils/accessibility';
 import { cropImage } from '../utils/image';
 import { cleanAltText } from '../utils/dom';
@@ -111,8 +111,8 @@ export const useDigitization = () => {
       setState(prev => ({ ...prev, progress: 45, statusMessage: 'Analyzing document structure...' }));
       await new Promise(resolve => setTimeout(resolve, 1200)); // Give them enough time to notice the weirdness
       
-      const BATCH_SIZE = 2; // Micro-batching: 2 pages per request for maximum stability
-      const CONCURRENCY_LIMIT = 2; // Process 2 batches at once for speed
+      const BATCH_SIZE = 1; // Single-slide vision calls keep model-server hangs traceable and reduce multimodal prompt complexity.
+      const CONCURRENCY_LIMIT = 1; // Process one page at a time so upstream task logs map cleanly to a page.
       const results: ConversionResult[] = new Array(totalPages);
       let completedPages = 0;
 
@@ -120,7 +120,9 @@ export const useDigitization = () => {
         try {
           const batchImages = batchIndices.map(idx => ({
             base64: pageData[idx].base64,
-            pageNumber: idx + 1
+            pageNumber: idx + 1,
+            extractedText: pageData[idx].extractedText,
+            textSource: pageData[idx].textSource
           }));
 
           setState(prev => ({ 
@@ -128,7 +130,19 @@ export const useDigitization = () => {
             statusMessage: `Generating HTML for Pages ${batchIndices.map(i => i + 1).join(', ')} of ${totalPages}...`,
           }));
 
-          const batchResponses = await convertBatchToHtml(batchImages, languageLevel);
+          const pageResponse = await convertPageToHtml(
+            batchImages[0].base64,
+            batchImages[0].pageNumber,
+            languageLevel,
+            {
+              extractedText: batchImages[0].extractedText,
+              textSource: batchImages[0].textSource
+            }
+          );
+          const batchResponses = {
+            pages: [pageResponse.page],
+            tokenCount: pageResponse.tokenCount
+          };
           incrementUsage();
 
           for (let k = 0; k < batchIndices.length; k++) {
@@ -205,15 +219,10 @@ export const useDigitization = () => {
         batches.push(batch);
       }
 
-      const pool = [];
-      for (const batch of batches) {
-        const p = processBatch(batch);
-        pool.push(p);
-        if (pool.length >= CONCURRENCY_LIMIT) {
-          await Promise.race(pool);
-        }
+      for (let i = 0; i < batches.length; i += CONCURRENCY_LIMIT) {
+        const group = batches.slice(i, i + CONCURRENCY_LIMIT);
+        await Promise.all(group.map(batch => processBatch(batch)));
       }
-      await Promise.all(pool);
 
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
 
@@ -239,9 +248,12 @@ export const useDigitization = () => {
       } else if (errMsg.includes("output") || errMsg.includes("token") || errMsg.includes("cut off")) {
         userMessage = "Page Too Complex to Process.";
         workaround = "This page has a lot of content. Try splitting it into two separate images or scans for better results.";
-      } else if (errMsg.includes("network") || errMsg.includes("fetch")) {
+      } else if (errMsg.includes("upstream llm") || errMsg.includes("closed the connection") || errMsg.includes("closed the socket") || errMsg.includes("fetch failed")) {
+        userMessage = "LLM Server Connection Issue.";
+        workaround = "The model server connection dropped or returned an unreadable response. Check the LLM server/proxy logs for the failed page and try again.";
+      } else if (errMsg.includes("network")) {
         userMessage = "Network Connection Issue.";
-        workaround = "Please check your internet connection and try again.";
+        workaround = "Please check your connection and try again.";
       }
 
       setState(prev => ({ 

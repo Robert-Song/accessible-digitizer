@@ -59,6 +59,121 @@ const extractJson = (text: string) => {
   }
 };
 
+const escapeInvalidJsonBackslashes = (text: string) => {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (!inString) {
+      result += char;
+      if (char === '"') inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '"') {
+      result += char;
+      inString = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      const next = text[i + 1] || '';
+      if (/["\\/bfnrtu]/.test(next)) {
+        result += char;
+        escaped = true;
+      } else {
+        result += '\\\\';
+      }
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+};
+
+const looksLikeLatexEscape = (text: string, index: number) => {
+  const next = text[index + 1] || '';
+  const rest = text.slice(index + 2);
+
+  return (next === 't' && /^(?:ext|imes|heta|au|ilde|frac|op|riangle)/.test(rest))
+    || (next === 'f' && /^(?:rac|orall)/.test(rest))
+    || (next === 'b' && /^(?:eta|ig|mod|oldsymbol)/.test(rest))
+    || (next === 'n' && /^(?:abla|u\b)/.test(rest))
+    || (next === 'r' && /^(?:ho|angle|ightarrow)/.test(rest))
+    || (next === 'v' && /^(?:ec|ar|ert)/.test(rest));
+};
+
+const protectLatexEscapesBeforeJsonParse = (text: string) => {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (!inString) {
+      result += char;
+      if (char === '"') inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '"') {
+      result += char;
+      inString = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      if (looksLikeLatexEscape(text, i)) {
+        result += '\\\\';
+      } else {
+        result += char;
+        escaped = true;
+      }
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+};
+
+const parseModelJson = (text: string) => {
+  const extracted = protectLatexEscapesBeforeJsonParse(extractJson(text));
+  try {
+    return JSON.parse(extracted);
+  } catch (error) {
+    const repaired = escapeInvalidJsonBackslashes(extracted);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      console.error('Failed to parse model JSON:', {
+        error,
+        preview: extracted.slice(0, 1000)
+      });
+      throw error;
+    }
+  }
+};
+
 const contentToText = (content: any): string => {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -66,6 +181,8 @@ const contentToText = (content: any): string => {
   }
   return '';
 };
+
+const PAGE_CONVERSION_MAX_TOKENS = 65536;
 
 interface ChatOptions {
   messages: any[];
@@ -75,10 +192,45 @@ interface ChatOptions {
   json?: boolean;
 }
 
+interface PageTextContext {
+  extractedText?: string;
+  textSource?: 'pdfplumber';
+}
+
+interface PageImageInput extends PageTextContext {
+  base64: string;
+  pageNumber: number;
+}
+
+const sanitizeExtractedText = (text: string) => text
+  .replace(/\u2022/g, '-')
+  .replace(/\u210b/g, '\\mathcal{H}')
+  .replace(/\u2264/g, '\\le')
+  .replace(/[\u2018\u2019]/g, "'")
+  .replace(/[\u201c\u201d]/g, '"')
+  .replace(/[\u2013\u2014\u2212]/g, '-')
+  .replace(/\u00a0/g, ' ')
+  .replace(/[^\S\n\t]+/g, ' ')
+  .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+  .trim();
+
+const buildPageContextPrompt = (context?: PageTextContext) => {
+  const extractedText = sanitizeExtractedText(context?.extractedText || '');
+
+  if (!extractedText) return '';
+
+  return `
+PDF TEXT CONTEXT:
+The following text was extracted from this PDF page. Use it as helpful context for readable text, but use the page image as the authority for layout, math, figures, and anything the extraction missed.
+
+${extractedText}
+`;
+};
+
 const chatCompletion = async ({ messages, vision = false, temperature = 0.1, maxTokens, json = false }: ChatOptions): Promise<{ text: string, tokenCount: number }> => {
   const response = await fetch('/api/llm/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({
       messages,
       vision,
@@ -90,11 +242,29 @@ const chatCompletion = async ({ messages, vision = false, temperature = 0.1, max
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || payload.message || `LLM proxy error (${response.status})`);
+    const cause = payload.cause?.message || payload.details?.cause?.message || payload.details?.message;
+    const detail = payload.upstreamBody || payload.message || cause || payload.hint;
+    console.error('LLM proxy request failed:', {
+      status: response.status,
+      error: payload.error,
+      message: payload.message,
+      detail,
+      hint: payload.hint,
+      cause: payload.cause || payload.details?.cause,
+      details: payload.details,
+      model: payload.model,
+      baseUrl: payload.baseUrl
+    });
+    throw new Error([payload.error || `LLM proxy error (${response.status})`, detail].filter(Boolean).join(' '));
   }
 
-  const text = contentToText(payload.choices?.[0]?.message?.content);
-  if (!text) throw new Error("Empty response from LLM");
+  const message = payload.choices?.[0]?.message;
+  const text = contentToText(message?.content);
+  if (!text) {
+    const finishReason = payload.choices?.[0]?.finish_reason;
+    const reasoning = message?.reasoning_content;
+    throw new Error(`Empty response from LLM${finishReason ? ` (finish_reason: ${finishReason})` : ''}${reasoning ? '. Provider returned reasoning_content but no final content.' : ''}`);
+  }
 
   return { text, tokenCount: payload.usage?.total_tokens || 0 };
 };
@@ -106,33 +276,56 @@ const imagePart = (base64: string, mimeType = 'image/jpeg') => ({
   }
 });
 
-async function callPageWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', retries = 5): Promise<{ text: string, tokenCount: number }> {
+async function callPageWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', pageContext?: PageTextContext, retries = 5): Promise<{ text: string, tokenCount: number }> {
   for (let i = 0; i < retries; i++) {
     try {
+      const contextPrompt = buildPageContextPrompt(pageContext);
+      const content = [
+        ...(contextPrompt ? [{ type: 'text', text: contextPrompt }] : []),
+        imagePart(base64Image),
+        {
+          type: 'text',
+          text: `Analyze page ${pageNumber}. Output only the JSON object.`
+        }
+      ];
+
+      console.info(`Starting vision conversion for page ${pageNumber}`, {
+        hasExtractedText: Boolean(pageContext?.extractedText?.trim()),
+        extractedTextChars: pageContext?.extractedText?.length || 0
+      });
+
       const response = await chatCompletion({
         vision: true,
-        json: true,
-        maxTokens: 65536,
+        json: false,
+        maxTokens: PAGE_CONVERSION_MAX_TOKENS,
         messages: [
           { role: 'system', content: getSystemInstruction(level) },
           {
             role: 'user',
-            content: [
-              imagePart(base64Image),
-              {
-                type: 'text',
-                text: `Analyze page ${pageNumber}. Output only the JSON object.`
-              }
-            ]
+            content
           }
         ]
       });
 
+      console.info(`Completed vision conversion for page ${pageNumber}`, {
+        tokenCount: response.tokenCount
+      });
+
       return { text: extractJson(response.text), tokenCount: response.tokenCount };
     } catch (error: any) {
-      const isRateLimit = error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit');
-      if (isRateLimit && i < retries - 1) {
-        await sleep(Math.pow(2, i + 1) * 1000);
+      const message = error.message?.toLowerCase() || '';
+      const isRateLimit = message.includes('429') || message.includes('rate limit');
+      const isTransientConnection = message.includes('econnreset')
+        || message.includes('socket hang up')
+        || message.includes('terminated')
+        || message.includes('headers timeout')
+        || message.includes('body timeout')
+        || message.includes('llm_proxy_timeout');
+
+      if ((isRateLimit || isTransientConnection) && i < retries - 1) {
+        const delayMs = Math.pow(2, i + 1) * 1000;
+        console.warn(`Retrying page ${pageNumber} after LLM connection failure (${i + 1}/${retries}) in ${delayMs} ms:`, error.message);
+        await sleep(delayMs);
         continue;
       }
       throw error;
@@ -141,13 +334,21 @@ async function callPageWithRetry(base64Image: string, pageNumber: number, level:
   throw new Error("Max retries exceeded");
 }
 
-async function callBatchWithRetry(images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful', retries = 5): Promise<{ text: string, tokenCount: number }> {
+async function callBatchWithRetry(images: PageImageInput[], level: LanguageLevel = 'faithful', retries = 5): Promise<{ text: string, tokenCount: number }> {
   for (let i = 0; i < retries; i++) {
     try {
-      const content = images.flatMap(img => [
-        imagePart(img.base64),
-        { type: 'text', text: `This is page ${img.pageNumber}.` }
-      ]);
+      const content = images.flatMap(img => {
+        const contextPrompt = buildPageContextPrompt({
+          extractedText: img.extractedText,
+          textSource: img.textSource
+        });
+
+        return [
+          ...(contextPrompt ? [{ type: 'text', text: contextPrompt }] : []),
+          imagePart(img.base64),
+          { type: 'text', text: `This is page ${img.pageNumber}.` }
+        ];
+      });
 
       content.push({
         type: 'text',
@@ -180,20 +381,20 @@ async function callBatchWithRetry(images: { base64: string, pageNumber: number }
   throw new Error("Max retries exceeded");
 }
 
-export const convertBatchToHtml = async (images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful'): Promise<BatchResponse> => {
+export const convertBatchToHtml = async (images: PageImageInput[], level: LanguageLevel = 'faithful'): Promise<BatchResponse> => {
   try {
     const result = await callBatchWithRetry(images, level);
-    const parsed = JSON.parse(result.text);
+    const parsed = parseModelJson(result.text);
     return { pages: parsed.pages as ModelPageResponse[], tokenCount: result.tokenCount };
   } catch (error: any) {
     throw new Error(`Failed to process batch: ${error.message}`);
   }
 };
 
-export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful'): Promise<{ page: ModelPageResponse, tokenCount: number }> => {
+export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', pageContext?: PageTextContext): Promise<{ page: ModelPageResponse, tokenCount: number }> => {
   try {
-    const result = await callPageWithRetry(base64Image, pageNumber, level);
-    return { page: JSON.parse(result.text) as ModelPageResponse, tokenCount: result.tokenCount };
+    const result = await callPageWithRetry(base64Image, pageNumber, level, pageContext);
+    return { page: parseModelJson(result.text) as ModelPageResponse, tokenCount: result.tokenCount };
   } catch (error: any) {
     throw new Error(`Failed to process page ${pageNumber}: ${error.message}`);
   }
@@ -277,7 +478,16 @@ export const describeFigure = async (base64Image: string): Promise<{ result: str
   return { result: response.text.trim(), tokenCount: response.tokenCount };
 };
 
-export const getAiCapabilities = async (): Promise<{ chat: boolean, image: boolean, textModel?: string, visionModel?: string, baseUrl?: string }> => {
+export const getAiCapabilities = async (): Promise<{
+  chat: boolean;
+  image: boolean;
+  textModel?: string;
+  visionModel?: string;
+  baseUrl?: string;
+  textBaseUrl?: string;
+  visionBaseUrl?: string;
+  splitProviders?: boolean;
+}> => {
   const response = await fetch('/api/llm/capabilities');
   if (!response.ok) return { chat: false, image: false };
   return response.json();

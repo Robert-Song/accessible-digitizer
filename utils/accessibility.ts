@@ -82,9 +82,22 @@ const ensureLandmark = (doc: Document) => {
   doc.body.appendChild(article);
 };
 
+const normalizeGeneratedMathText = (html: string): string => html
+  .replace(/\t(?=ext\b|\{|imes\b|heta\b|au\b|ilde\b|frac\b)/g, '\\t')
+  .replace(/\f(?=rac\b|orall\b)/g, '\\f')
+  .replace(/\x08(?=eta\b|ig\b|mod\b|oldsymbol\b)/g, '\\b')
+  .replace(/\n(?=abla\b|u\b)/g, '\\n')
+  .replace(/\x0D(?=ho\b|angle\b|ightarrow\b)/g, '\\r')
+  .replace(/\x0B(?=ec\b|ar\b|ert\b)/g, '\\v')
+  .replace(/\uFB00/g, 'ff')
+  .replace(/\uFB01/g, 'fi')
+  .replace(/\uFB02/g, 'fl')
+  .replace(/\uFB03/g, 'ffi')
+  .replace(/\uFB04/g, 'ffl');
+
 export const sanitizeGeneratedHtml = (html: string): string => {
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+  const doc = parser.parseFromString(normalizeGeneratedMathText(html), 'text/html');
 
   stripUnsafeStyles(doc);
   stripLowContrastClasses(doc);

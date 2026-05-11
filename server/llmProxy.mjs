@@ -1,7 +1,14 @@
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
+import { handlePdfExtract } from './pdfExtract.mjs';
 
 const DEFAULT_BASE_URL = 'http://localhost:11434/v1';
+const lastRequestAt = {
+  text: 0,
+  vision: 0
+};
 
 const loadLocalEnv = () => {
   for (const fileName of ['.env.local', '.env']) {
@@ -41,6 +48,25 @@ const sendJson = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 
+const errorDetails = (error) => {
+  if (!(error instanceof Error)) return { message: 'Unknown error' };
+
+  const cause = error.cause instanceof Error
+    ? {
+        name: error.cause.name,
+        message: error.cause.message,
+        code: error.cause.code
+      }
+    : undefined;
+
+  return {
+    name: error.name,
+    message: error.message,
+    code: error.code,
+    cause
+  };
+};
+
 const sendCors = (res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -52,20 +78,94 @@ const joinUrl = (baseUrl, path) => {
   return `${normalizedBase}${path}`;
 };
 
+const postJson = (url, headers, body, timeoutMs) => new Promise((resolve, reject) => {
+  const parsedUrl = new URL(url);
+  const client = parsedUrl.protocol === 'https:' ? https : http;
+  const requestBody = JSON.stringify(body).replace(/[\u007f-\uffff]/g, (char) =>
+    `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+  );
+
+  const req = client.request({
+    protocol: parsedUrl.protocol,
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port,
+    path: `${parsedUrl.pathname}${parsedUrl.search}`,
+    method: 'POST',
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': Buffer.byteLength(requestBody)
+    }
+  }, (res) => {
+    const chunks = [];
+
+    res.on('data', chunk => chunks.push(chunk));
+    res.on('error', reject);
+    res.on('end', () => {
+      resolve({
+        status: res.statusCode || 0,
+        statusText: res.statusMessage || '',
+        ok: Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 300),
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString('utf8')
+      });
+    });
+  });
+
+  req.setTimeout(timeoutMs, () => {
+    const error = new Error(`Upstream LLM request timed out after ${timeoutMs} ms`);
+    error.code = 'LLM_PROXY_TIMEOUT';
+    req.destroy(error);
+  });
+
+  req.on('error', reject);
+  req.write(requestBody);
+  req.end();
+});
+
 const getConfig = () => {
   const baseUrl = process.env.LLM_BASE_URL || DEFAULT_BASE_URL;
+  const textBaseUrl = process.env.LLM_TEXT_BASE_URL || baseUrl;
+  const visionBaseUrl = process.env.LLM_VISION_BASE_URL || baseUrl;
   const textModel = process.env.LLM_TEXT_MODEL || process.env.LLM_MODEL || '';
   const visionModel = process.env.LLM_VISION_MODEL || textModel;
   const imageBaseUrl = process.env.IMAGE_API_BASE_URL || '';
+  const textReasoningEffort = process.env.LLM_TEXT_REASONING_EFFORT || process.env.LLM_REASONING_EFFORT || '';
+  const visionReasoningEffort = process.env.LLM_VISION_REASONING_EFFORT || process.env.LLM_REASONING_EFFORT || '';
+  const textRequestDelayMs = Number(process.env.LLM_TEXT_REQUEST_DELAY_MS || process.env.LLM_REQUEST_DELAY_MS || 0);
+  const visionRequestDelayMs = Number(process.env.LLM_VISION_REQUEST_DELAY_MS || process.env.LLM_REQUEST_DELAY_MS || 0);
+  const requestTimeoutMs = Number(process.env.LLM_PROXY_TIMEOUT_MS || 20 * 60 * 1000);
 
   return {
     baseUrl,
+    textBaseUrl,
+    visionBaseUrl,
     apiKey: process.env.LLM_API_KEY || '',
+    textApiKey: process.env.LLM_TEXT_API_KEY || process.env.LLM_API_KEY || '',
+    visionApiKey: process.env.LLM_VISION_API_KEY || process.env.LLM_API_KEY || '',
     textModel,
     visionModel,
+    textReasoningEffort,
+    visionReasoningEffort,
+    textRequestDelayMs: Number.isFinite(textRequestDelayMs) && textRequestDelayMs > 0 ? textRequestDelayMs : 0,
+    visionRequestDelayMs: Number.isFinite(visionRequestDelayMs) && visionRequestDelayMs > 0 ? visionRequestDelayMs : 0,
+    requestTimeoutMs: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0 ? requestTimeoutMs : 20 * 60 * 1000,
     imageBaseUrl,
     imageApiKey: process.env.IMAGE_API_KEY || ''
   };
+};
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const throttleProvider = async (kind, delayMs) => {
+  if (!delayMs) return;
+
+  const now = Date.now();
+  const elapsed = now - lastRequestAt[kind];
+  const waitMs = Math.max(0, delayMs - elapsed);
+
+  if (waitMs > 0) await sleep(waitMs);
+  lastRequestAt[kind] = Date.now();
 };
 
 const extractPath = (reqUrl = '') => {
@@ -76,10 +176,20 @@ const extractPath = (reqUrl = '') => {
 const forwardChat = async (req, res) => {
   const config = getConfig();
   const body = await readBody(req);
-  const model = body.model || (body.vision ? config.visionModel : config.textModel);
+  const isVisionRequest = Boolean(body.vision);
+  const model = body.model || (isVisionRequest ? config.visionModel : config.textModel);
+  const baseUrl = isVisionRequest ? config.visionBaseUrl : config.textBaseUrl;
+  const apiKey = isVisionRequest ? config.visionApiKey : config.textApiKey;
+  const reasoningEffort = isVisionRequest ? config.visionReasoningEffort : config.textReasoningEffort;
+  const requestKind = isVisionRequest ? 'vision' : 'text';
+  const requestDelayMs = isVisionRequest ? config.visionRequestDelayMs : config.textRequestDelayMs;
 
-  if (!config.baseUrl) {
-    sendJson(res, 500, { error: 'LLM_BASE_URL is not configured.' });
+  if (!baseUrl) {
+    sendJson(res, 500, {
+      error: isVisionRequest
+        ? 'LLM_VISION_BASE_URL or LLM_BASE_URL is not configured.'
+        : 'LLM_TEXT_BASE_URL or LLM_BASE_URL is not configured.'
+    });
     return;
   }
 
@@ -90,25 +200,67 @@ const forwardChat = async (req, res) => {
     return;
   }
 
-  const headers = { 'Content-Type': 'application/json' };
-  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  const upstream = await fetch(joinUrl(config.baseUrl, '/chat/completions'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
+  const requestBody = {
+    model,
+    messages: body.messages,
+    temperature: body.temperature ?? 0.1,
+    max_tokens: body.max_tokens,
+    response_format: body.response_format,
+    stream: false
+  };
+
+  if (reasoningEffort) {
+    requestBody.reasoning = {
+      effort: reasoningEffort,
+      exclude: true
+    };
+  }
+
+  await throttleProvider(requestKind, requestDelayMs);
+
+  const upstreamUrl = joinUrl(baseUrl, '/chat/completions');
+  let upstream;
+  try {
+    upstream = await postJson(upstreamUrl, headers, requestBody, config.requestTimeoutMs);
+  } catch (error) {
+    const details = errorDetails(error);
+    console.error('LLM upstream fetch failed:', {
+      requestKind,
       model,
-      messages: body.messages,
-      temperature: body.temperature ?? 0.1,
-      max_tokens: body.max_tokens,
-      response_format: body.response_format,
-      stream: false
-    })
-  });
+      baseUrl,
+      details
+    });
+    sendJson(res, 502, {
+      error: 'Could not complete request to the upstream LLM server.',
+      message: details.message,
+      cause: details.cause,
+      model,
+      baseUrl,
+      hint: `The LLM server may have closed the connection, timed out, or returned a response the proxy could not read. Proxy timeout is ${config.requestTimeoutMs} ms; set LLM_PROXY_TIMEOUT_MS to change it. Check the LLM server logs around this page request.`
+    });
+    return;
+  }
 
-  const text = await upstream.text();
+  const text = upstream.body;
+  if (!upstream.ok) {
+    sendJson(res, upstream.status, {
+      error: `Upstream LLM server returned ${upstream.status}${upstream.statusText ? ` ${upstream.statusText}` : ''}.`,
+      upstreamStatus: upstream.status,
+      upstreamBody: text,
+      model,
+      baseUrl,
+      hint: isVisionRequest
+        ? 'This request included image input. Text chat works, but the upstream server appears not to support OpenAI-compatible vision requests for this model or deployment.'
+        : 'Check the upstream LLM server logs, model name, and API key.'
+    });
+    return;
+  }
+
   res.statusCode = upstream.status;
-  res.setHeader('Content-Type', upstream.headers.get('Content-Type') || 'application/json');
+  res.setHeader('Content-Type', upstream.headers['content-type'] || 'application/json');
   res.end(text);
 };
 
@@ -128,7 +280,7 @@ const forwardImage = async (_req, res) => {
 
 export const handleLlmProxy = async (req, res, next) => {
   const path = extractPath(req.url);
-  if (!path.startsWith('/api/llm')) {
+  if (!path.startsWith('/api/llm') && !path.startsWith('/api/pdf')) {
     next?.();
     return;
   }
@@ -148,7 +300,13 @@ export const handleLlmProxy = async (req, res, next) => {
         image: Boolean(config.imageBaseUrl),
         textModel: config.textModel,
         visionModel: config.visionModel,
-        baseUrl: config.baseUrl
+        baseUrl: config.baseUrl,
+        textBaseUrl: config.textBaseUrl,
+        visionBaseUrl: config.visionBaseUrl,
+        splitProviders: config.textBaseUrl !== config.visionBaseUrl || config.textApiKey !== config.visionApiKey,
+        textRequestDelayMs: config.textRequestDelayMs,
+        visionRequestDelayMs: config.visionRequestDelayMs,
+        requestTimeoutMs: config.requestTimeoutMs
       });
       return;
     }
@@ -163,10 +321,17 @@ export const handleLlmProxy = async (req, res, next) => {
       return;
     }
 
-    sendJson(res, 404, { error: `Unknown LLM proxy route: ${path}` });
+    if (path === '/api/pdf/extract') {
+      await handlePdfExtract(req, res);
+      return;
+    }
+
+    sendJson(res, 404, { error: `Unknown API route: ${path}` });
   } catch (error) {
+    console.error('API proxy error:', errorDetails(error));
     sendJson(res, 500, {
-      error: error instanceof Error ? error.message : 'Unknown proxy error'
+      error: error instanceof Error ? error.message : 'Unknown proxy error',
+      details: errorDetails(error)
     });
   }
 };

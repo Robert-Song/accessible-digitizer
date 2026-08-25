@@ -106,11 +106,11 @@ export const useDigitization = () => {
       // Use optimize: true for faster processing and lower quota hit
       const pageData = await pdfToImageData(file, true);
       const totalPages = pageData.length;
-      
+
       // Ensure we hit the "gaslight zone" (34-67%) even for fast or single-page documents
       setState(prev => ({ ...prev, progress: 45, statusMessage: 'Analyzing document structure...' }));
       await new Promise(resolve => setTimeout(resolve, 1200)); // Give them enough time to notice the weirdness
-      
+
       const BATCH_SIZE = 1; // Single-slide vision calls keep model-server hangs traceable and reduce multimodal prompt complexity.
       const CONCURRENCY_LIMIT = 1; // Process one page at a time so upstream task logs map cleanly to a page.
       const results: ConversionResult[] = new Array(totalPages);
@@ -125,8 +125,8 @@ export const useDigitization = () => {
             textSource: pageData[idx].textSource
           }));
 
-          setState(prev => ({ 
-            ...prev, 
+          setState(prev => ({
+            ...prev,
             statusMessage: `Generating HTML for Pages ${batchIndices.map(i => i + 1).join(', ')} of ${totalPages}...`,
           }));
 
@@ -148,11 +148,11 @@ export const useDigitization = () => {
           for (let k = 0; k < batchIndices.length; k++) {
             const i = batchIndices[k];
             const geminiResponse = batchResponses.pages[k];
-            
+
             if (!geminiResponse) continue;
 
             let finalHtml = geminiResponse.html;
-            
+
             const figureResults = geminiResponse.figures.map((fig) => {
               const screenshotBase64 = cropImage(pageData[i].canvas, fig);
               return {
@@ -162,7 +162,7 @@ export const useDigitization = () => {
                 alt: fig.alt
               };
             });
-            
+
             figureResults.forEach(figResult => {
               const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
               const cleanAlt = cleanAltText(figResult.alt);
@@ -187,8 +187,8 @@ export const useDigitization = () => {
             const repaired = await auditAndRepairHtml(finalHtml, i + 1);
             finalHtml = repaired.html;
 
-            results[i] = { 
-              html: finalHtml, 
+            results[i] = {
+              html: finalHtml,
               pageNumber: i + 1,
               width: pageData[i].width,
               height: pageData[i].height,
@@ -226,9 +226,9 @@ export const useDigitization = () => {
 
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
 
-      setState(prev => ({ 
-        ...prev, 
-        isProcessing: false, 
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
         statusMessage: 'Digitization Complete! Your accessible document is ready.',
         progress: 100,
         totalTime
@@ -236,9 +236,9 @@ export const useDigitization = () => {
     } catch (err: any) {
       let userMessage = "An unexpected error occurred during digitization.";
       let workaround = "Please try refreshing the page or uploading a smaller file.";
-      
+
       const errMsg = err.message?.toLowerCase() || "";
-      
+
       if (errMsg.includes("quota") || errMsg.includes("rate limit") || errMsg.includes("429")) {
         userMessage = "High Traffic Detected (Rate Limit).";
         workaround = "We're processing many requests right now. Please wait 60 seconds and try again.";
@@ -256,11 +256,11 @@ export const useDigitization = () => {
         workaround = "Please check your connection and try again.";
       }
 
-      setState(prev => ({ 
-        ...prev, 
-        isProcessing: false, 
-        error: `${userMessage}|${workaround}`, 
-        statusMessage: 'Error' 
+      setState(prev => ({
+        ...prev,
+        isProcessing: false,
+        error: `${userMessage}|${workaround}`,
+        statusMessage: 'Error'
       }));
     }
   };
@@ -273,7 +273,7 @@ export const useDigitization = () => {
       const { html: refinedHtml } = await refineLatex(page.html);
       incrementUsage();
       const repaired = await auditAndRepairHtml(refinedHtml, page.pageNumber);
-      
+
       const newResults = [...state.results];
       newResults[activeTab] = { ...page, html: repaired.html, audit: repaired.audit };
       setState(prev => ({ ...prev, results: newResults }));
@@ -288,42 +288,42 @@ export const useDigitization = () => {
   const saveEditedFigures = (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string }[]) => {
     setState(prev => {
       const newResults = [...prev.results];
-      
+
       updates.forEach(({ figureId, pageIndex, newSrc, newAlt }) => {
         const page = { ...newResults[pageIndex] };
         const figureIndex = page.figures.findIndex(f => f.id === figureId);
-        
+
         if (figureIndex !== -1) {
           const newFigures = [...page.figures];
           const updatedFig = { ...newFigures[figureIndex], currentSrc: newSrc };
           if (newAlt !== undefined) updatedFig.alt = newAlt;
           newFigures[figureIndex] = updatedFig;
           page.figures = newFigures;
-          
+
           const parser = new DOMParser();
           const doc = parser.parseFromString(page.html, 'text/html');
           const img = doc.querySelector(`img[data-figure-id="${figureId}"]`);
           const figure = img?.closest('figure');
-          
+
           if (img && figure) {
             const cleanAlt = cleanAltText(newAlt || updatedFig.alt);
             img.setAttribute('src', newSrc);
             img.setAttribute('alt', cleanAlt);
             figure.setAttribute('aria-label', `Visual figure: ${cleanAlt}`);
-            
+
             let figcaption = figure.querySelector('figcaption');
             if (!figcaption) {
               figcaption = doc.createElement('figcaption');
               figure.appendChild(figcaption);
             }
             figcaption.innerHTML = `Figure: ${newAlt || updatedFig.alt}`;
-            
+
             page.html = doc.body.innerHTML;
           }
           newResults[pageIndex] = page;
         }
       });
-      
+
       return { ...prev, results: newResults };
     });
   };

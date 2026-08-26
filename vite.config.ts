@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { handleLlmProxy } from './server/llmProxy.mjs';
 
 const llmProxyPlugin = () => ({
-  name: 'qed-llm-proxy',
+  name: 'accessdocs-llm-proxy',
   configureServer(server: any) {
     server.middlewares.use((req: any, res: any, next: any) => {
       handleLlmProxy(req, res, next);

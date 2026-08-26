@@ -135,6 +135,7 @@ const getConfig = () => {
   const textRequestDelayMs = Number(process.env.LLM_TEXT_REQUEST_DELAY_MS || process.env.LLM_REQUEST_DELAY_MS || 0);
   const visionRequestDelayMs = Number(process.env.LLM_VISION_REQUEST_DELAY_MS || process.env.LLM_REQUEST_DELAY_MS || 0);
   const requestTimeoutMs = Number(process.env.LLM_PROXY_TIMEOUT_MS || 20 * 60 * 1000);
+  const concurrencyLimit = Number(process.env.LLM_CONCURRENCY_LIMIT || process.env.LLM_CONCURRENCY || process.env.CONCURRENCY_LIMIT || 2);
 
   return {
     baseUrl,
@@ -150,6 +151,7 @@ const getConfig = () => {
     textRequestDelayMs: Number.isFinite(textRequestDelayMs) && textRequestDelayMs > 0 ? textRequestDelayMs : 0,
     visionRequestDelayMs: Number.isFinite(visionRequestDelayMs) && visionRequestDelayMs > 0 ? visionRequestDelayMs : 0,
     requestTimeoutMs: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0 ? requestTimeoutMs : 20 * 60 * 1000,
+    concurrencyLimit: Number.isFinite(concurrencyLimit) && concurrencyLimit > 0 ? concurrencyLimit : 2,
     imageBaseUrl,
     imageApiKey: process.env.IMAGE_API_KEY || ''
   };
@@ -306,7 +308,8 @@ export const handleLlmProxy = async (req, res, next) => {
         splitProviders: config.textBaseUrl !== config.visionBaseUrl || config.textApiKey !== config.visionApiKey,
         textRequestDelayMs: config.textRequestDelayMs,
         visionRequestDelayMs: config.visionRequestDelayMs,
-        requestTimeoutMs: config.requestTimeoutMs
+        requestTimeoutMs: config.requestTimeoutMs,
+        concurrencyLimit: config.concurrencyLimit
       });
       return;
     }

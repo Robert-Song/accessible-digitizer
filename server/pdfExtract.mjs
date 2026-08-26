@@ -58,7 +58,7 @@ export const handlePdfExtract = async (req, res) => {
     return;
   }
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'qed-pdf-'));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'accessdocs-pdf-'));
   const pdfPath = path.join(tempDir, 'input.pdf');
 
   try {

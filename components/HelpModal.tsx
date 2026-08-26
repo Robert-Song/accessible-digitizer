@@ -11,7 +11,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
         <header className="mb-6 flex items-start justify-between gap-6 border-b border-black pb-4">
           <div>
             <p className="font-mono text-xs uppercase tracking-widest text-neutral-600">help</p>
-            <h2 className="mt-1 text-3xl font-semibold">How to use Q.E.D.</h2>
+            <h2 className="mt-1 text-3xl font-semibold">How to use AccessDocs</h2>
           </div>
           <button onClick={onClose} className="border border-black bg-white px-3 py-2 text-sm hover:bg-neutral-100">
             close
@@ -34,6 +34,18 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
             <li>Automated accessibility checks do not prove math accuracy or alt-text quality.</li>
           </ul>
         </section>
+
+        <footer className="mt-6 border-t border-neutral-200 pt-4 text-xs text-neutral-600">
+          Influenced by Professor Kuan-Hua Chen&apos;s{' '}
+          <a
+            href="https://drjchen1.github.io/chenflix/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 text-black hover:no-underline"
+          >
+            Q.E.D. program
+          </a>.
+        </footer>
       </section>
     </div>
   );

@@ -83,495 +83,279 @@ const App: React.FC = () => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(firstPageHtml, 'text/html');
     const firstHeading = doc.querySelector('h1, h2, h3');
-    const extractedTitle = firstHeading ? firstHeading.textContent?.trim() : 'Mathematics Course Notes';
-    const originalFileName = originalFile?.name || '';
+    const extractedTitle = firstHeading ? firstHeading.textContent?.trim() : 'Accessible Document';
 
-    const cleanResults = state.results.map(r => {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(r.html, 'text/html');
-      doc.querySelectorAll('.edit-figure-btn').forEach(btn => btn.remove());
-      return { ...r, html: doc.body.innerHTML };
+    const cleanResults = state.results.map((r, idx) => {
+      const pageParser = new DOMParser();
+      const pageDoc = pageParser.parseFromString(r.html, 'text/html');
+
+      // Remove edit figure buttons
+      pageDoc.querySelectorAll('.edit-figure-btn').forEach(btn => btn.remove());
+
+      // Remove standalone slide number paragraphs
+      pageDoc.body.querySelectorAll('p').forEach(p => {
+        const text = p.textContent?.trim() || '';
+        if (/^(?:page|slide)?\s*\d{1,3}$/i.test(text) && !p.querySelector('img, svg, a, table, button, input')) {
+          p.remove();
+        }
+      });
+
+      // On continuation pages (idx > 0), only remove exact duplicate repeats of the main document title
+      if (idx > 0 && extractedTitle) {
+        pageDoc.body.querySelectorAll('h1, h2').forEach(heading => {
+          const headingText = heading.textContent?.trim() || '';
+          const isExactTitleRepeat = headingText.toLowerCase().replace(/[^a-z0-9]/g, '') === extractedTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (isExactTitleRepeat && pageDoc.body.children.length > 1) {
+            heading.remove();
+          }
+        });
+
+        // Demote any remaining <h1> to <h2>
+        pageDoc.body.querySelectorAll('h1').forEach(h1 => {
+          const h2 = pageDoc.createElement('h2');
+          h2.innerHTML = h1.innerHTML;
+          Array.from(h1.attributes).forEach(attr => h2.setAttribute(attr.name, attr.value));
+          h1.replaceWith(h2);
+        });
+      }
+
+      // Unwrap outer <article class="generated-page"> if present
+      const outerArticle = pageDoc.body.querySelector('article.generated-page');
+      let pageContent = pageDoc.body.innerHTML;
+      if (outerArticle && pageDoc.body.children.length === 1) {
+        pageContent = outerArticle.innerHTML;
+      }
+
+      return { ...r, html: pageContent };
     });
-    const unresolvedCount = cleanResults.reduce((sum, result) => sum + (result.audit?.violations.length || 0), 0);
-    const reviewBanner = unresolvedCount > 0 ? `
-    <div role="note" class="no-print" style="padding: 1rem 1.5rem; background: #fffbeb; color: #78350f; border-bottom: 1px solid #fcd34d; font-family: Inter, system-ui, sans-serif;">
-        <strong>Accessibility review needed:</strong> Automated axe-core checks found ${unresolvedCount} unresolved issue${unresolvedCount === 1 ? '' : 's'} in this export. Math accuracy and alt text quality require human review.
-    </div>` : `
-    <div role="note" class="no-print" style="padding: 1rem 1.5rem; background: #f8fafc; color: #334155; border-bottom: 1px solid #e2e8f0; font-family: Inter, system-ui, sans-serif;">
-        No automated WCAG AA violations were found by axe-core. Math accuracy and alt text quality still require human review.
-    </div>`;
 
     const template = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${extractedTitle} - Accessible Math Notes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>${extractedTitle} - AccessDocs</title>
     <script>
-        window.MathJax = { 
-          tex: { 
-            inlineMath: [['\\\\(', '\\\\)']], 
+        window.MathJax = {
+          tex: {
+            inlineMath: [['\\\\(', '\\\\)']],
             displayMath: [['\\\\[', '\\\\]']],
             processEscapes: true
           },
-          options: { renderActions: { addMenu: [0, '', ''] } }
+          options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'code', 'pre']
+          }
         };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;600&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
         :root {
-            --bg: #fdfdfd;
-            --ink: #1e293b;
-            --heading-color: #0f172a;
-            --accent: #CEB888;
-            --link-color: #B19B69;
+            --purple: #581c87;
+            --purple-50: #faf5ff;
+            --purple-100: #f3e8ff;
+            --indigo-600: #4f46e5;
+            --indigo-50: #eef2ff;
+            --slate-900: #1e293b;
+            --slate-700: #334155;
+            --slate-400: #595959;
+            --slate-300: #cbd5e1;
+            --slate-200: #e2e8f0;
+            --slate-50: #f8fafc;
+            --emerald-600: #059669;
+            --emerald-50: #ecfdf5;
+            --amber-600: #d97706;
+            --amber-50: #fffbeb;
+            --fg-1: var(--slate-900);
+            --fg-2: var(--slate-700);
+            --border: var(--slate-200);
+            --rule: var(--slate-300);
+            --accent: var(--purple);
+            --bg: #ffffff;
+            --bg-soft: var(--slate-50);
+            --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --font-body: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
         }
 
-        body { 
-            font-family: 'Inter', system-ui, sans-serif; 
-            background-color: var(--bg); 
-            color: var(--ink); 
-            margin: 0; 
-            padding: 0; 
-            line-height: 1.7;
-            font-size: 1.125rem;
-        }
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
 
-        .container {
-            width: 100%;
-            margin: 0 auto;
-            padding: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        @media (min-width: 1024px) {
-            .container {
-                padding: 2rem;
-            }
-            .layout {
-                display: grid;
-                grid-template-columns: 200px 1fr;
-                gap: 2rem;
-                align-items: start;
-                padding-top: 4rem;
-                transition: all 0.3s ease;
-                max-width: 1600px;
-                margin: 0 auto;
-            }
-            .sidebar-hidden.container {
-                padding: 0;
-                max-width: none;
-            }
-            .sidebar-hidden .layout.sidebar-hidden {
-                grid-template-columns: 1fr;
-                gap: 0;
-                max-width: none;
-                width: 100%;
-                margin: 0;
-            }
-            .sidebar-hidden article {
-                background: transparent !important;
-                box-shadow: none !important;
-                padding: 2rem 0 !important;
-                position: relative;
-                width: 100%;
-            }
-            .sidebar-hidden .math-content {
-                max-width: 1100px;
-                margin: 0 auto;
-                display: block;
-                padding: 5rem;
-                background: #fafaf9;
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-                border-radius: 1.5rem;
-            }
-            .sidebar-hidden .download-btn-wrapper {
-                position: fixed;
-                right: 3rem !important;
-                top: 2rem !important;
-                z-index: 50;
-            }
-            .sidebar-hidden .page-badge {
-                position: absolute;
-                left: 3rem;
-                top: 2rem;
-                margin: 0;
-                z-index: 10;
-            }
-            .sidebar-hidden .download-btn-wrapper a {
-                background: #CEB888;
-                color: #000;
-                border: 2px solid #000;
-                font-weight: 700;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-                transition: transform 0.2s ease;
-            }
-            .sidebar-hidden .download-btn-wrapper a:hover {
-                transform: translateY(-2px);
-                background: #e2cf9f;
-            }
-            .sidebar-hidden .download-btn-wrapper span {
-                position: absolute;
-                width: 1px;
-                height: 1px;
-                padding: 0;
-                margin: -1px;
-                overflow: hidden;
-                clip: rect(0, 0, 0, 0);
-                white-space: nowrap;
-                border-width: 0;
-            }
-            .sidebar {
-                position: sticky;
-                top: 4rem;
-                display: block !important;
-            }
-            .sidebar.hidden {
-                display: none !important;
-            }
-        }
-
-        @page {
-            size: A4 portrait;
-            margin: 1cm;
-        }
-
-        .sidebar {
-            display: none;
-        }
-
-        .download-btn-wrapper a {
-            transition: all 0.3s ease;
-        }
-
-        @media (max-width: 1023px) {
-            .download-btn-wrapper a {
-                padding: 0.5rem 1rem;
-                font-size: 10px;
-            }
-            .sidebar-hidden .math-content {
-                padding: 1.5rem;
-                border-radius: 0;
-                grid-template-columns: 1fr;
-            }
-            .sidebar-hidden .download-btn-wrapper,
-            .sidebar-hidden .page-badge {
-                position: absolute;
-                top: 0.5rem !important;
-            }
-            .sidebar-hidden .download-btn-wrapper {
-                right: 0.5rem !important;
-            }
-            .sidebar-hidden .page-badge {
-                left: 0.5rem !important;
-            }
-        }
-
-        .toggle-sidebar-btn {
-            position: fixed;
-            bottom: 2rem;
-            left: 2rem;
-            z-index: 50;
-            background: #CEB888;
-            color: black;
-            border: 2px solid black;
-            border-radius: 9999px;
-            width: 3.5rem;
-            height: 3.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            transition: all 0.2s;
-        }
-
-        .toggle-sidebar-btn:hover {
-            transform: scale(1.1);
-            background: #B19B69;
-        }
-
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border-width: 0;
-        }
-
-        .sidebar-title {
-            font-size: 0.7rem;
-            font-weight: 800;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 1.5rem;
-        }
-
-        .sidebar-nav {
-            list-style: none;
-            padding: 0;
+        body {
             margin: 0;
+            background: var(--bg);
+            color: var(--fg-1);
+            font-family: var(--font-body);
+            font-size: 1.125rem; /* 18px / 13.5pt >= 12pt */
+            line-height: 1.7;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .sidebar-nav li {
-            margin-bottom: 0.75rem;
+        #main {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 3.5rem 2rem 6rem;
         }
 
-        .sidebar-nav a {
-            font-size: 0.85rem;
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 600;
-            transition: color 0.2s;
+        @media (max-width: 640px) {
+            #main { padding: 2rem 1.25rem 4rem; }
+            body { font-size: 1.05rem; }
         }
 
-        .sidebar-nav a:hover {
-            color: var(--accent);
+        #main > * + * { margin-top: 1.3em; }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--font-display);
+            margin: 2.2em 0 0.5em;
+            font-weight: 700;
+            line-height: 1.25;
+            letter-spacing: -0.01em;
+            color: var(--fg-1);
         }
 
-        article { 
-            margin-bottom: 4rem; 
-            position: relative; 
-            width: 100%; 
-            background: white;
-            padding: 1.5rem;
-            display: flow-root;
-            box-sizing: border-box;
-            transition: padding 0.3s ease;
-        }
+        h1 { font-size: 2.35rem; margin-top: 0; }
+        h2 { font-size: 1.8rem; margin-top: 2em; border-bottom: 1px solid var(--border); padding-bottom: 0.45rem; }
+        h3 { font-size: 1.4rem; }
+        h4 { font-size: 1.2rem; }
 
-        @media (min-width: 1024px) {
-            article {
-                padding: 3rem;
-            }
-            .sidebar-hidden article {
-                padding: 2rem 0;
-                width: 100%;
-            }
-        }
-
-        .math-content { 
-            color: var(--ink); 
-        }
-
-        .math-content p {
-            margin-bottom: 1.5rem;
-        }
-
-        .page-badge { 
-            display: inline-block;
-            margin-bottom: 2rem;
-            padding: 0.35rem 0.85rem; 
-            background: #f1f5f9;
-            color: #475569; 
-            font-family: 'Inter', sans-serif;
-            font-size: 0.7rem; 
-            font-weight: 800; 
-            text-transform: uppercase;
-            border-radius: 9999px;
-            letter-spacing: 0.05em;
-        }
-
-        .notebox { 
-            border-left: 4px solid var(--accent); 
-            padding: 1.5rem 2rem; 
-            margin: 2.5rem 0; 
-            background-color: #f8fafc; 
-            font-style: italic; 
-            color: #334155; 
-            border-radius: 0 0.75rem 0.75rem 0;
-            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-        }
-
-        h1, h2, h3, h4 {
-            font-family: 'Inter', sans-serif;
-            color: var(--heading-color);
-            margin-top: 4rem;
-            margin-bottom: 1.5rem;
-            line-height: 1.2;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-        }
-
-        h1 { font-size: 2.5rem; }
-        h2 { font-size: 2rem; }
-        h3 { font-size: 1.5rem; }
+        p { margin: 0 0 1.15em; }
+        strong { font-weight: 700; }
+        em { font-style: italic; }
 
         a {
-            color: var(--link-color);
+            color: var(--accent);
             text-decoration: underline;
-            text-underline-offset: 4px;
-            font-weight: 600;
-            transition: all 0.2s;
+            text-underline-offset: 3px;
+        }
+        a:hover { color: var(--indigo-600); }
+        a:focus-visible {
+            outline: 3px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 2px;
         }
 
-        a:hover {
-            color: var(--accent);
-            text-decoration-thickness: 2px;
+        ul, ol { padding-left: 1.7em; margin: 1.1em 0; }
+        li { margin: 0.45em 0; }
+        ul ul, ol ol, ul ol, ol ul { margin: 0.4em 0; }
+
+        blockquote, .solution-box {
+            margin: 1.8em 0;
+            padding: 1.15rem 1.5rem;
+            border-left: 4px solid var(--accent);
+            background: var(--purple-50);
+            border-radius: 0 10px 10px 0;
+            font-size: 1.05rem;
+        }
+        blockquote > :last-child, .solution-box > :last-child { margin-bottom: 0; }
+
+        .table-wrap { overflow-x: auto; margin: 2em 0; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 1.05rem; /* >= 12pt */
+            margin: 1.5em 0;
+        }
+        caption {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1.05rem; /* >= 12pt */
+            text-align: left;
+            margin-bottom: 0.65rem;
+            color: var(--fg-1);
+        }
+        thead th {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1rem; /* 16px / 12pt */
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--fg-2);
+            text-align: left;
+            padding: 0.85rem 1.1rem;
+            border-bottom: 2px solid var(--rule);
+            background: var(--bg-soft);
+        }
+        tbody td {
+            padding: 0.85rem 1.1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 1.05rem; /* >= 12pt */
+        }
+        tbody tr:hover td { background: var(--bg-soft); }
+
+        mjx-container[display="true"] {
+            display: block;
+            margin: 1.6em auto;
+            padding: 1.35rem 1.6rem;
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            text-align: center;
+            overflow-x: auto;
+            font-size: 1.15rem;
         }
 
         figure {
-            margin: 2rem 0;
-            padding: 1.5rem;
+            margin: 2.2em 0;
+            padding: 1.35rem;
             background: #fff;
-            border: 1px solid #f1f5f9;
-            border-radius: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 12px;
             text-align: center;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
-            max-width: 100%;
-            box-sizing: border-box;
-            display: block;
-            overflow: hidden;
         }
-
-        @media (min-width: 1280px) {
-            .math-content {
-                display: grid;
-                grid-template-columns: 1fr 25%;
-                gap: 0 2rem;
-                align-items: start;
-            }
-            .math-content > * {
-                grid-column: 1;
-            }
-            .math-content > figure {
-                grid-column: 2;
-                grid-row: span 50;
-                margin: 0;
-                width: 100%;
-                max-width: none;
-            }
-            .math-content h1, .math-content h2, .math-content h3 {
-                grid-column: 1 / -1;
-                clear: both;
-            }
-        }
-
-        figcaption {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.875rem;
-            color: #334155;
-            margin-top: 1.5rem;
-            font-style: italic;
-            font-weight: 500;
-            overflow-wrap: break-word;
-            word-wrap: break-word;
-            hyphens: auto;
-        }
-
-        img {
+        figure img, figure svg {
             max-width: 100%;
             height: auto;
             display: block;
             margin: 0 auto;
+            border-radius: 8px;
+        }
+        figcaption {
+            margin-top: 0.85rem;
+            font-size: 1rem; /* 16px / 12pt */
+            color: var(--fg-2);
+            font-style: italic;
         }
 
-        /* Math overflow safety */
-        mjx-container {
-            max-width: 100% !important;
-            overflow-x: auto !important;
-            overflow-y: hidden !important;
-            padding: 0.5rem 0;
+        .page-break-divider {
+            display: flex;
+            align-items: center;
+            margin: 3.5rem 0 2rem;
+            border-top: 1px dashed var(--slate-300);
+            position: relative;
         }
-
-        /* Accessibility: focus styles */
-        a:focus, button:focus {
-            outline: 3px solid var(--accent);
-            outline-offset: 2px;
+        .page-break-divider .page-num {
+            position: absolute;
+            right: 0;
+            top: -0.85rem;
+            background: var(--bg);
+            padding: 0 0.65rem;
+            font-family: var(--font-mono);
+            font-size: 1rem; /* 16px / 12pt minimum */
+            color: var(--slate-400);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         @media print {
-            body { font-size: 12pt; }
-            .container { max-width: none; padding: 0; }
-            article { 
-                padding: 0; 
-                margin-bottom: 0; 
-                page-break-after: always; 
-            }
-            .page-badge { display: none; }
+            body { font-size: 12pt; color: #000; background: #fff; }
+            #main { max-width: none; padding: 0; }
             .no-print { display: none !important; }
+            .page-break-divider { page-break-after: always; border: 0; margin: 0; }
+            h2, h3 { break-after: avoid; }
+            figure, table, mjx-container[display="true"] { break-inside: avoid; }
         }
     </style>
 </head>
 <body>
-    ${reviewBanner}
-    <button id="sidebar-toggle" class="no-print toggle-sidebar-btn" aria-label="Toggle navigation sidebar" aria-expanded="true" aria-controls="sidebar-nav">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-    </button>
-    <div class="container">
-        <div id="main-layout" class="layout">
-            <nav id="sidebar-nav" class="sidebar no-print" aria-label="Document navigation">
-                <div class="sidebar-title">Contents</div>
-                <ul class="sidebar-nav">
-                    ${cleanResults.map(r => `
-                    <li><a href="#page-${r.pageNumber}">Page ${r.pageNumber}</a></li>
-                    `).join('')}
-                </ul>
-            </nav>
-            <main class="content" style="padding-bottom: 12rem;">
-                ${cleanResults.map((r, idx) => `
-                <article id="page-${r.pageNumber}" role="region" class="page-article">
-                    ${idx === 0 && originalFileName ? `
-                    <div class="no-print download-btn-wrapper" style="position: absolute; top: 0; right: 1.5rem;">
-                        <a href="${encodeURI(originalFileName)}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#CFB991] text-black rounded-xl font-black text-[11px] hover:bg-[#B19B69] transition-all border-2 border-black no-underline tracking-widest shadow-xl transform hover:-translate-y-0.5 active:translate-y-0" title="Download original notes">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 21v-8H7v8" />
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 3v5h8" />
-                            </svg>
-                            <span>Download original notes</span>
-                        </a>
-                    </div>` : ''}
-                    <span class="page-badge">PAGE ${r.pageNumber}</span>
-                    <div class="math-content">
-                        ${r.html}
-                    </div>
-                </article>`).join('\n')}
-            </main>
-        </div>
-    </div>
-    <script>
-        const toggleBtn = document.getElementById('sidebar-toggle');
-        const container = document.querySelector('.container');
-        const layout = document.getElementById('main-layout');
-        const sidebar = document.getElementById('sidebar-nav');
-        const articles = document.querySelectorAll('.page-article');
-
-        toggleBtn.addEventListener('click', () => {
-            const isHidden = sidebar.classList.toggle('hidden');
-            layout.classList.toggle('sidebar-hidden');
-            container.classList.toggle('sidebar-hidden');
-            toggleBtn.setAttribute('aria-expanded', !isHidden);
-            
-            articles.forEach(article => {
-                if (isHidden) {
-                    article.classList.add('content-expanded');
-                } else {
-                    article.classList.remove('content-expanded');
-                }
-            });
-        });
-
-        function checkMobile() {
-            if (window.innerWidth < 1024) {
-                toggleBtn.style.display = 'none';
-            } else {
-                toggleBtn.style.display = 'flex';
-            }
-        }
-        window.addEventListener('resize', checkMobile);
-        checkMobile();
-    </script>
+    <article id="main">
+        ${cleanResults.map((r, idx) => `
+        <section class="page-section" id="page-${r.pageNumber}" aria-label="Page ${r.pageNumber}">
+            ${idx > 0 ? `<div class="page-break-divider no-print" role="separator" aria-label="Page ${r.pageNumber}"><span class="page-num">Page ${r.pageNumber}</span></div>` : ''}
+            ${r.html}
+        </section>`).join('\n')}
+    </article>
 </body>
 </html>`;
 
@@ -579,7 +363,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const baseFileName = originalFile ? originalFile.name.replace(/\.[^/.]+$/, "") : `math_notes_${new Date().getTime()}`;
+    const baseFileName = originalFile ? originalFile.name.replace(/\.[^/.]+$/, "") : `accessdocs_${new Date().getTime()}`;
     link.download = `${baseFileName}-acc.html`;
     link.click();
     URL.revokeObjectURL(url);
@@ -595,7 +379,12 @@ const App: React.FC = () => {
       {state.isProcessing && (
         <ProcessingOverlay 
           progress={state.progress} 
-          status={state.statusMessage} 
+          status={state.statusMessage}
+          elapsedTime={elapsedTime}
+          pageProgress={state.pageProgress}
+          activeConcurrencyCount={state.activeConcurrencyCount}
+          docSummary={state.docSummary}
+          topicKeyword={state.topicKeyword}
         />
       )}
 

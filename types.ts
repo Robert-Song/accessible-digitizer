@@ -76,6 +76,22 @@ export interface ConversionResult {
   figures: FigureResult[];
 }
 
+export interface DigitizationOptions {
+  languageLevel: LanguageLevel;
+  generateDocSummary?: boolean;
+  topicKeyword?: string;
+  concurrencyLimit?: number;
+}
+
+export type PageProcessingStatus = 'pending' | 'converting' | 'cropping' | 'auditing' | 'repairing' | 'completed' | 'error';
+
+export interface PageProgressInfo {
+  pageNumber: number;
+  status: PageProcessingStatus;
+  statusMessage?: string;
+  error?: string;
+}
+
 export interface AppState {
   isProcessing: boolean;
   progress: number;
@@ -85,6 +101,10 @@ export interface AppState {
   totalTime?: number;
   sessionRequestCount: number;
   dailyRequestCount: number;
+  docSummary?: string | null;
+  topicKeyword?: string | null;
+  pageProgress?: PageProgressInfo[];
+  activeConcurrencyCount?: number;
 }
 
 declare global {

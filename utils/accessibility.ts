@@ -12,18 +12,12 @@ const LOW_CONTRAST_CLASSES = [
 
 const normalizeHeadingOrder = (doc: Document) => {
   const headings = Array.from(doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-
-  if (headings.length === 0) {
-    const h1 = doc.createElement('h1');
-    h1.textContent = 'Accessible Math Notes';
-    doc.body.prepend(h1);
-    return;
-  }
+  if (headings.length === 0) return;
 
   let lastLevel = 0;
-  headings.forEach((heading, index) => {
+  headings.forEach((heading) => {
     const currentLevel = Number(heading.tagName.slice(1));
-    const nextLevel = index === 0 ? 1 : Math.min(currentLevel, lastLevel + 1);
+    const nextLevel = lastLevel === 0 ? currentLevel : Math.min(currentLevel, lastLevel + 1);
     if (nextLevel !== currentLevel) {
       const replacement = doc.createElement(`h${nextLevel}`);
       replacement.innerHTML = heading.innerHTML;
@@ -83,22 +77,105 @@ const ensureLandmark = (doc: Document) => {
 };
 
 const normalizeGeneratedMathText = (html: string): string => html
-  .replace(/\t(?=ext\b|\{|imes\b|heta\b|au\b|ilde\b|frac\b)/g, '\\t')
-  .replace(/\f(?=rac\b|orall\b)/g, '\\f')
-  .replace(/\x08(?=eta\b|ig\b|mod\b|oldsymbol\b)/g, '\\b')
-  .replace(/\n(?=abla\b|u\b)/g, '\\n')
-  .replace(/\x0D(?=ho\b|angle\b|ightarrow\b)/g, '\\r')
-  .replace(/\x0B(?=ec\b|ar\b|ert\b)/g, '\\v')
   .replace(/\uFB00/g, 'ff')
   .replace(/\uFB01/g, 'fi')
   .replace(/\uFB02/g, 'fl')
   .replace(/\uFB03/g, 'ffi')
-  .replace(/\uFB04/g, 'ffl');
+  .replace(/\uFB04/g, 'ffl')
+  // Fix MathJax `Could not find closing ']' for argument to \\` collision:
+  // When a newline `\\` is followed by `[` (unless it's an explicit dimension like `\\[10pt]`),
+  // TeX/MathJax treats `[` as an optional spacing argument. Inserting `\relax ` prevents this collision.
+  .replace(/\\\\(\s*)\[(?!\s*-?\d+(?:\.\d+)?(?:pt|em|ex|cm|mm|in|pc|px|mu)\])/g, '\\\\\\relax$1[');
+
+const cleanCodeBlocks = (doc: Document) => {
+  doc.body.querySelectorAll('code, pre').forEach(el => {
+    // Remove accidental LaTeX backslash escapes (e.g. `\_`, `\$`, `\%`, `\&`) inside code and pre tags
+    el.innerHTML = el.innerHTML.replace(/\\([_$#%&])/g, '$1');
+  });
+};
+
+const fixUnbalancedParenthesesInHeadings = (doc: Document) => {
+  doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
+    let html = h.innerHTML;
+    if (!/^\s*\(/i.test(html) && /\\\([^)]*\\\)\s*pts\)/i.test(html)) {
+      html = html.replace(/(?<!\()\s*(\\\([^)]*\\\)\s*pts\))/gi, ' ($1');
+      h.innerHTML = html;
+    }
+  });
+};
+
+const removeSlideArtifacts = (doc: Document) => {
+  doc.body.querySelectorAll('p').forEach(p => {
+    const text = p.textContent?.trim() || '';
+    if (/^(?:page|slide)?\s*\d{1,3}$/i.test(text) && !p.querySelector('img, svg, a, table, button, input')) {
+      p.remove();
+    } else if (text === '' && !p.querySelector('img, svg, a, table, button, input')) {
+      p.remove();
+    }
+  });
+};
+
+const ensureValidTableStructure = (doc: Document) => {
+  doc.body.querySelectorAll('table').forEach((table, index) => {
+    // 1. Ensure <caption> exists
+    if (!table.querySelector('caption')) {
+      const caption = doc.createElement('caption');
+      // Look for a preceding paragraph or header mentioning table/matrix/truth
+      const prevEl = table.previousElementSibling;
+      const prevText = prevEl?.textContent?.trim() || '';
+      if (prevText && (prevText.toLowerCase().includes('table') || prevText.toLowerCase().includes('matrix') || prevText.toLowerCase().includes('training set'))) {
+        caption.textContent = prevText.slice(0, 100);
+      } else {
+        const headerTexts = Array.from(table.querySelectorAll('th')).map(th => th.textContent?.trim()).filter(Boolean);
+        caption.textContent = headerTexts.length > 0 
+          ? `Data table with columns: ${headerTexts.slice(0, 3).join(', ')}`
+          : `Mathematical data table ${index + 1}`;
+      }
+      table.prepend(caption);
+    }
+
+    // 2. Ensure <thead> and <th> have scope="col"
+    const thead = table.querySelector('thead');
+    if (thead) {
+      thead.querySelectorAll('th').forEach(th => {
+        if (!th.getAttribute('scope')) th.setAttribute('scope', 'col');
+      });
+    }
+
+    // 3. Ensure <tbody> exists and contains all non-thead data rows
+    let tbody = table.querySelector('tbody');
+    if (!tbody) {
+      tbody = doc.createElement('tbody');
+      const directRows = Array.from(table.querySelectorAll(':scope > tr'));
+      directRows.forEach(tr => {
+        if (!tr.querySelector('th') || tr.querySelector('td')) {
+          tbody!.appendChild(tr);
+        }
+      });
+      if (tbody.children.length > 0) {
+        table.appendChild(tbody);
+      }
+    }
+
+    // 4. Ensure table is wrapped in .table-wrap for horizontal accessibility
+    const parent = table.parentElement;
+    if (!parent || !parent.classList.contains('table-wrap')) {
+      const wrapper = doc.createElement('div');
+      wrapper.className = 'table-wrap';
+      table.replaceWith(wrapper);
+      wrapper.appendChild(table);
+    }
+  });
+};
 
 export const sanitizeGeneratedHtml = (html: string): string => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(normalizeGeneratedMathText(html), 'text/html');
 
+  removeSlideArtifacts(doc);
+  cleanCodeBlocks(doc);
+  fixUnbalancedParenthesesInHeadings(doc);
+  ensureValidTableStructure(doc);
   stripUnsafeStyles(doc);
   stripLowContrastClasses(doc);
   ensureImageText(doc);

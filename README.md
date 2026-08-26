@@ -2,7 +2,7 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Q.E.D. Accessible Math Digitizer
+# AccessDocs - Accessible Math & Document Digitizer
 
 This app converts uploaded slides, PDFs, images, or text notes into accessible HTML with math markup, figure alt text, and an axe-core accessibility audit/repair pass.
 
@@ -70,6 +70,11 @@ To avoid rate limits, add a delay before each upstream provider request:
 LLM_VISION_REQUEST_DELAY_MS=5000
 LLM_TEXT_REQUEST_DELAY_MS=1000
 LLM_PROXY_TIMEOUT_MS=1200000
+LLM_CONCURRENCY_LIMIT=2
 ```
 
-Use `0` or omit either delay value to disable that delay. `LLM_PROXY_TIMEOUT_MS` defaults to 20 minutes. Vision conversion runs one slide at a time so model-server task logs map cleanly to pages.
+Use `0` or omit either delay value to disable that delay. `LLM_PROXY_TIMEOUT_MS` defaults to 20 minutes. `LLM_CONCURRENCY_LIMIT` sets how many pages are processed concurrently in parallel (defaults to `2`).
+
+## Acknowledgments
+
+Influenced by Professor Kuan-Hua Chen's [Q.E.D. program](https://drjchen1.github.io/chenflix/).

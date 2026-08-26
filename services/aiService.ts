@@ -17,12 +17,24 @@ Your task is to convert scanned mathematics lecture slides or notes into high-fi
 
 Rules:
 1. ${adaptationInstruction}
-2. ACCESSIBILITY: Use semantic HTML5 elements. Start the page with <h1>, use <h2> for major sections, and do not skip heading levels. Do not use headings only for visual size.
+2. SEMANTIC STRUCTURE: Use semantic HTML5 elements (<section>, <p>, <ol>, <ul>, <table>, <code>, <pre>). Use <h1> for document title, <h2> for major sections/problems, and <h3> for numbered sub-questions (e.g. 1.1, 1.2, 2.1, Overview, Files). Format code variables, functions, and terminal commands in <code> or <pre>. Do not invent headings for continuation pages that simply continue an existing problem or sentence. Do not skip heading levels.
 3. WCAG AA SAFETY: Do not use inline color/background styles. Avoid low-contrast Tailwind classes such as text-slate-300, text-gray-300, text-zinc-300, or text-slate-400.
-4. MATHEMATICS: Convert mathematical expressions into LaTeX. Use \\( ... \\) for inline math and \\[ ... \\] for standalone display math.
-5. FIGURES: Only mark actual visual representations as figures: graphs, coordinate systems, geometry, diagrams, or flowcharts. Hand-drawn circles, arrows, boxed labels, and brackets used only as emphasis are annotations, not figures.
-6. FIGURE OUTPUT: For each actual figure, provide a normalized [ymin, xmin, ymax, xmax] box from 0-1000 and concise alt text.
-7. HTML OUTPUT: Put matching placeholders into the HTML as <img id="fig_ID" alt="[description]">.
+4. MATHEMATICS: Convert all mathematical expressions into LaTeX.
+   - PREFER INLINE MATH: Use inline math \\( ... \\) for variables, short expressions, or any math that is part of a sentence.
+   - MAINTAIN SENTENCE FLOW: Math within a sentence MUST remain inside a standard paragraph tag using inline math to ensure a natural, cohesive flow for screen readers.
+   - RESERVE BLOCK MATH: Use block math \\[ ... \\] ONLY for standalone, complex equations that require their own line.
+   - GROUP LOGICAL SEQUENCES: If a sequence of math symbols and text forms a single logical line or derivation, group it into a single block math expression (\\[ ... \\]). NEVER create multiple adjacent block containers for parts of the same continuous derivation.
+   - PARENTHESES: When expressions or points are enclosed in parentheses (e.g. \`(7+8+5=20 pts)\`), preserve the outer parentheses: write \`(\\(7+8+5=20\\) pts)\`.
+   - Ensure backslashes are present for all functions (e.g., \\sin, \\cos, \\log, \\sqrt, \\times) and delimiters are not missing.
+5. TABLES (CRITICAL): Always convert truth tables, data tables, matrices, and tabular comparisons into standard semantic HTML <table> containing:
+   - <caption> with a concise, descriptive title of what the table represents.
+   - <thead> with <tr> and <th scope="col"> for column headers.
+   - <tbody> with <tr> and <td> for data cells.
+   - NEVER crop tables as figures.
+6. FIGURES: Only mark actual non-text visual graphics as figures: coordinate graphs, geometry diagrams, plots, charts, or flowcharts. Hand-drawn circles, arrows, boxed labels, tables, and brackets used only as emphasis are annotations, not figures.
+7. FIGURE OUTPUT: For each actual figure, provide a normalized [ymin, xmin, ymax, xmax] box from 0-1000 and concise alt text.
+8. HTML OUTPUT: Put matching placeholders into the HTML as <img id="fig_ID" alt="[description]">.
+9. OMIT SLIDE BANNERS & ARTIFACTS: Do not transcribe recurring slide deck headers (such as "Machine Learning Homework", course numbers, dates) at the top of continuation slides. Only output a heading when a genuinely new section, theorem, or numbered problem begins. Do not transcribe raw slide page numbers in corners into the text. Preserve problem numbering using <ol start="N"> when continuing numbered lists.
 
 Return ONLY JSON in this exact shape:
 {
@@ -44,133 +56,144 @@ const stripFences = (text: string) => {
   return cleaned.trim();
 };
 
-const extractJson = (text: string) => {
-  const cleaned = stripFences(text);
+const parseModelJson = (rawText: string) => {
+  let cleaned = stripFences(rawText);
+
+  // If standard JSON.parse succeeds AND didn't turn LaTeX commands into control characters:
   try {
-    JSON.parse(cleaned);
-    return cleaned;
+    const direct = JSON.parse(cleaned);
+    if (direct && typeof direct === 'object' && (direct.html || direct.pages)) {
+      const sample = typeof direct.html === 'string' ? direct.html : JSON.stringify(direct.pages);
+      if (!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(sample) && !sample.includes(' egin{')) {
+        return direct;
+      }
+    }
   } catch {
-    const first = cleaned.indexOf('{');
-    const last = cleaned.lastIndexOf('}');
-    if (first !== -1 && last !== -1 && last > first) {
-      return cleaned.slice(first, last + 1);
-    }
-    return cleaned;
-  }
-};
-
-const escapeInvalidJsonBackslashes = (text: string) => {
-  let result = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-
-    if (!inString) {
-      result += char;
-      if (char === '"') inString = true;
-      continue;
-    }
-
-    if (escaped) {
-      result += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === '"') {
-      result += char;
-      inString = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      const next = text[i + 1] || '';
-      if (/["\\/bfnrtu]/.test(next)) {
-        result += char;
-        escaped = true;
-      } else {
-        result += '\\\\';
-      }
-      continue;
-    }
-
-    result += char;
+    // Proceed to resilient LaTeX JSON string extraction
   }
 
-  return result;
-};
-
-const looksLikeLatexEscape = (text: string, index: number) => {
-  const next = text[index + 1] || '';
-  const rest = text.slice(index + 2);
-
-  return (next === 't' && /^(?:ext|imes|heta|au|ilde|frac|op|riangle)/.test(rest))
-    || (next === 'f' && /^(?:rac|orall)/.test(rest))
-    || (next === 'b' && /^(?:eta|ig|mod|oldsymbol)/.test(rest))
-    || (next === 'n' && /^(?:abla|u\b)/.test(rest))
-    || (next === 'r' && /^(?:ho|angle|ightarrow)/.test(rest))
-    || (next === 'v' && /^(?:ec|ar|ert)/.test(rest));
-};
-
-const protectLatexEscapesBeforeJsonParse = (text: string) => {
-  let result = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-
-    if (!inString) {
-      result += char;
-      if (char === '"') inString = true;
-      continue;
-    }
-
-    if (escaped) {
-      result += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === '"') {
-      result += char;
-      inString = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      if (looksLikeLatexEscape(text, i)) {
-        result += '\\\\';
-      } else {
-        result += char;
-        escaped = true;
-      }
-      continue;
-    }
-
-    result += char;
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
   }
 
-  return result;
-};
-
-const parseModelJson = (text: string) => {
-  const extracted = protectLatexEscapesBeforeJsonParse(extractJson(text));
+  // Fast path: try standard JSON.parse first
   try {
-    return JSON.parse(extracted);
-  } catch (error) {
-    const repaired = escapeInvalidJsonBackslashes(extracted);
-    try {
-      return JSON.parse(repaired);
-    } catch {
-      console.error('Failed to parse model JSON:', {
-        error,
-        preview: extracted.slice(0, 1000)
-      });
-      throw error;
+    const directParsed = JSON.parse(cleaned);
+    if (directParsed && typeof directParsed === 'object') {
+      return directParsed;
     }
+  } catch {
+    // If standard parse fails due to unescaped LaTeX backslashes or raw control chars, sanitize below
+  }
+
+  let sanitized = '';
+  let inString = false;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (!inString) {
+      sanitized += char;
+      if (char === '"') {
+        inString = true;
+      }
+      continue;
+    }
+
+    // Inside a JSON string literal
+    if (char === '"') {
+      let backslashCount = 0;
+      let j = i - 1;
+      while (j >= 0 && cleaned[j] === '\\') {
+        backslashCount++;
+        j--;
+      }
+
+      if (backslashCount % 2 === 0) {
+        inString = false;
+        sanitized += char;
+      } else {
+        sanitized += char;
+      }
+      continue;
+    }
+
+    if (char === '\\') {
+      const nextChar = cleaned[i + 1];
+      const remainder = cleaned.slice(i + 1);
+
+      // If escaping a quote: `\"`
+      if (nextChar === '"') {
+        sanitized += '\\"';
+        i++;
+        continue;
+      }
+
+      // If valid unicode escape `\uXXXX`
+      if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/.test(cleaned.slice(i + 2, i + 6))) {
+        sanitized += '\\u' + cleaned.slice(i + 2, i + 6);
+        i += 5;
+        continue;
+      }
+
+      // Preserve JSON newline escape '\n' unless it is a LaTeX command starting with 'n' (e.g. \nabla, \nu, \neq, \neg)
+      if (nextChar === 'n' && !/^(?:nabla|nu|neq|neg|notin|nparallel|newcommand|norm)/i.test(remainder)) {
+        sanitized += '\\n';
+        i++;
+        continue;
+      }
+
+      // Preserve JSON tab escape '\t' unless it is a LaTeX command starting with 't' (e.g. \text, \times, \theta, \tau, \tilde, \top, \to)
+      if (nextChar === 't' && !/^(?:ext|imes|heta|au|ilde|op|to\b|frac|an\b|anh\b)/i.test(remainder)) {
+        sanitized += '\\t';
+        i++;
+        continue;
+      }
+
+      // Preserve JSON carriage return '\r' unless it is a LaTeX command (e.g. \rho, \right, \rangle, \root)
+      if (nextChar === 'r' && !/^(?:ho|ight|angle|oot|eg\b)/i.test(remainder)) {
+        sanitized += '\\r';
+        i++;
+        continue;
+      }
+
+      // Double all other backslashes to preserve LaTeX commands (e.g. \frac, \begin, \(, \[, \\, \nabla, \alpha)
+      sanitized += '\\\\';
+      continue;
+    }
+
+    // Convert raw control characters inside JSON strings into valid escape sequences
+    if (char === '\n') {
+      sanitized += '\\n';
+      continue;
+    }
+    if (char === '\r') {
+      sanitized += '\\r';
+      continue;
+    }
+    if (char === '\t') {
+      sanitized += '\\t';
+      continue;
+    }
+
+    sanitized += char;
+  }
+
+  try {
+    const parsed = JSON.parse(sanitized);
+    // Cleanup any literal "\n" strings that might have leaked into HTML tags
+    if (parsed && typeof parsed.html === 'string') {
+      parsed.html = parsed.html.replace(/\\n(?=[<a-zA-Z0-9])/g, '\n');
+    }
+    return parsed;
+  } catch (error) {
+    console.error('Failed to parse model JSON:', {
+      error,
+      preview: sanitized.slice(0, 1000)
+    });
+    throw error;
   }
 };
 
@@ -192,9 +215,11 @@ interface ChatOptions {
   json?: boolean;
 }
 
-interface PageTextContext {
+export interface PageTextContext {
   extractedText?: string;
   textSource?: 'pdfplumber';
+  docSummary?: string;
+  topicKeyword?: string;
 }
 
 interface PageImageInput extends PageTextContext {
@@ -215,16 +240,53 @@ const sanitizeExtractedText = (text: string) => text
   .trim();
 
 const buildPageContextPrompt = (context?: PageTextContext) => {
+  const parts: string[] = [];
+  const topicKeyword = context?.topicKeyword?.trim();
+  const docSummary = context?.docSummary?.trim();
   const extractedText = sanitizeExtractedText(context?.extractedText || '');
 
-  if (!extractedText) return '';
+  if (topicKeyword) {
+    parts.push(`DOCUMENT TOPIC / KEYWORDS:\n${topicKeyword}\n(Ensure terminology, notation, and shorthand align with this topic.)`);
+  }
 
-  return `
-PDF TEXT CONTEXT:
-The following text was extracted from this PDF page. Use it as helpful context for readable text, but use the page image as the authority for layout, math, figures, and anything the extraction missed.
+  if (docSummary) {
+    parts.push(`GLOBAL DOCUMENT SUMMARY:\n${docSummary}\n(Use this overall document summary to maintain cross-slide context and accurate notation.)`);
+  }
 
-${extractedText}
-`;
+  if (extractedText) {
+    parts.push(`PDF TEXT CONTEXT (THIS PAGE):\nThe following text was extracted from this PDF page. Use it as helpful context for readable text, but use the page image as the authority for layout, math, figures, and anything the extraction missed.\n\n${extractedText}`);
+  }
+
+  return parts.join('\n\n');
+};
+
+export const summarizeDocumentText = async (fullText: string, topicKeyword?: string): Promise<{ summary: string, tokenCount: number }> => {
+  try {
+    const sanitized = sanitizeExtractedText(fullText).slice(0, 40000);
+    if (!sanitized) return { summary: '', tokenCount: 0 };
+
+    const topicPrefix = topicKeyword?.trim() ? `User-specified topic/keywords: "${topicKeyword.trim()}".\n\n` : '';
+
+    const response = await chatCompletion({
+      temperature: 0.1,
+      maxTokens: 256,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a mathematics education specialist. Write a concise, 1-2 sentence overview summarizing the main mathematical topic, core theorems, and key concepts of the whole document. Return ONLY the 1-2 sentences with no introductory filler.'
+        },
+        {
+          role: 'user',
+          content: `${topicPrefix}Extracted text from the entire document:\n\n${sanitized}\n\nProvide the 1-2 sentence summary:`
+        }
+      ]
+    });
+
+    return { summary: response.text.trim(), tokenCount: response.tokenCount };
+  } catch (error) {
+    console.warn('Document summarization failed; continuing without global summary.', error);
+    return { summary: '', tokenCount: 0 };
+  }
 };
 
 const chatCompletion = async ({ messages, vision = false, temperature = 0.1, maxTokens, json = false }: ChatOptions): Promise<{ text: string, tokenCount: number }> => {
@@ -311,7 +373,7 @@ async function callPageWithRetry(base64Image: string, pageNumber: number, level:
         tokenCount: response.tokenCount
       });
 
-      return { text: extractJson(response.text), tokenCount: response.tokenCount };
+      return { text: response.text, tokenCount: response.tokenCount };
     } catch (error: any) {
       const message = error.message?.toLowerCase() || '';
       const isRateLimit = message.includes('429') || message.includes('rate limit');
@@ -340,7 +402,9 @@ async function callBatchWithRetry(images: PageImageInput[], level: LanguageLevel
       const content = images.flatMap(img => {
         const contextPrompt = buildPageContextPrompt({
           extractedText: img.extractedText,
-          textSource: img.textSource
+          textSource: img.textSource,
+          docSummary: img.docSummary,
+          topicKeyword: img.topicKeyword
         });
 
         return [
@@ -368,7 +432,7 @@ async function callBatchWithRetry(images: PageImageInput[], level: LanguageLevel
         ]
       });
 
-      return { text: extractJson(response.text), tokenCount: response.tokenCount };
+      return { text: response.text, tokenCount: response.tokenCount };
     } catch (error: any) {
       const isRateLimit = error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit');
       if (isRateLimit && i < retries - 1) {
@@ -385,7 +449,12 @@ export const convertBatchToHtml = async (images: PageImageInput[], level: Langua
   try {
     const result = await callBatchWithRetry(images, level);
     const parsed = parseModelJson(result.text);
-    return { pages: parsed.pages as ModelPageResponse[], tokenCount: result.tokenCount };
+    const rawPages = Array.isArray(parsed?.pages) ? parsed.pages : [parsed];
+    const pages: ModelPageResponse[] = rawPages.map((p: any) => ({
+      html: typeof p?.html === 'string' ? p.html : '',
+      figures: Array.isArray(p?.figures) ? p.figures : []
+    }));
+    return { pages, tokenCount: result.tokenCount };
   } catch (error: any) {
     throw new Error(`Failed to process batch: ${error.message}`);
   }
@@ -394,7 +463,12 @@ export const convertBatchToHtml = async (images: PageImageInput[], level: Langua
 export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', pageContext?: PageTextContext): Promise<{ page: ModelPageResponse, tokenCount: number }> => {
   try {
     const result = await callPageWithRetry(base64Image, pageNumber, level, pageContext);
-    return { page: parseModelJson(result.text) as ModelPageResponse, tokenCount: result.tokenCount };
+    const parsed = parseModelJson(result.text);
+    const page: ModelPageResponse = {
+      html: typeof parsed?.html === 'string' ? parsed.html : (typeof parsed === 'string' ? parsed : ''),
+      figures: Array.isArray(parsed?.figures) ? parsed.figures : []
+    };
+    return { page, tokenCount: result.tokenCount };
   } catch (error: any) {
     throw new Error(`Failed to process page ${pageNumber}: ${error.message}`);
   }
@@ -487,6 +561,10 @@ export const getAiCapabilities = async (): Promise<{
   textBaseUrl?: string;
   visionBaseUrl?: string;
   splitProviders?: boolean;
+  textRequestDelayMs?: number;
+  visionRequestDelayMs?: number;
+  requestTimeoutMs?: number;
+  concurrencyLimit?: number;
 }> => {
   const response = await fetch('/api/llm/capabilities');
   if (!response.ok) return { chat: false, image: false };

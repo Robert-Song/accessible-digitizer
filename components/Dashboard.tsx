@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { LanguageLevel } from '../types';
+import { DigitizationOptions, LanguageLevel } from '../types';
 
 interface DashboardProps {
-  onFileUpload: (file: File, languageLevel: LanguageLevel) => void;
+  onFileUpload: (file: File, options: DigitizationOptions) => void;
   isProcessing: boolean;
   onShowDocs: () => void;
 }
@@ -15,11 +15,19 @@ const modes: { id: LanguageLevel; label: string; description: string }[] = [
 
 const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onShowDocs }) => {
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel>('faithful');
+  const [topicKeyword, setTopicKeyword] = useState<string>('');
+  const [generateDocSummary, setGenerateDocSummary] = useState<boolean>(true);
   const [isDragging, setIsDragging] = useState(false);
+
+  const getOptions = (): DigitizationOptions => ({
+    languageLevel,
+    generateDocSummary,
+    topicKeyword: topicKeyword.trim() || undefined
+  });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) onFileUpload(file, languageLevel);
+    if (file) onFileUpload(file, getOptions());
   };
 
   const handleDragOver = (event: React.DragEvent) => {
@@ -38,13 +46,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onSho
     if (isProcessing) return;
 
     const file = event.dataTransfer.files?.[0];
-    if (file) onFileUpload(file, languageLevel);
+    if (file) onFileUpload(file, getOptions());
   };
 
   return (
     <div className="mx-auto flex min-h-[78vh] w-full max-w-5xl flex-col justify-center px-4 py-12">
       <header className="mb-10 border-b border-black pb-6">
-        <p className="mb-3 font-mono text-xs uppercase tracking-widest text-neutral-600">qed / pdf to accessible html</p>
+        <p className="mb-3 font-mono text-xs uppercase tracking-widest text-neutral-600">AccessDocs / PDF to Accessible HTML</p>
         <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-black md:text-6xl">
           Convert lecture slides into accessible documents.
         </h1>
@@ -76,7 +84,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onSho
             />
           </label>
 
-          <div className="mt-8 border-t border-black pt-5">
+          <div className="mt-6 border-t border-black pt-5">
+            <label htmlFor="topic-keyword-input" className="mb-2 block font-mono text-xs uppercase tracking-widest text-neutral-600">
+              Topic / Main Keywords (Optional)
+            </label>
+            <input
+              id="topic-keyword-input"
+              type="text"
+              value={topicKeyword}
+              onChange={(e) => setTopicKeyword(e.target.value)}
+              placeholder="e.g., Real Analysis: Metric Spaces, Stokes' Theorem, Eigenvalues..."
+              disabled={isProcessing}
+              className="w-full border border-black bg-white px-3 py-2.5 text-sm text-black placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-black"
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              Helps the model accurately interpret domain-specific notation and abbreviations.
+            </p>
+          </div>
+
+          <div className="mt-6 border-t border-black pt-5">
             <p className="mb-3 font-mono text-xs uppercase tracking-widest text-neutral-600">transcription mode</p>
             <div className="grid gap-2 sm:grid-cols-3">
               {modes.map(mode => (
@@ -95,26 +121,60 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onSho
               ))}
             </div>
           </div>
+
+          <div className="mt-6 border-t border-neutral-200 pt-4">
+            <label className="flex cursor-pointer items-start gap-3 select-none">
+              <input
+                type="checkbox"
+                checked={generateDocSummary}
+                onChange={(e) => setGenerateDocSummary(e.target.checked)}
+                disabled={isProcessing}
+                className="mt-0.5 h-4 w-4 rounded border-black text-black accent-black focus:ring-black"
+              />
+              <div>
+                <span className="block text-sm font-semibold text-black">
+                  Generate global document summary
+                </span>
+                <span className="block text-xs text-neutral-600 leading-relaxed">
+                  Extracts whole-PDF text to build a 1–2 sentence global document abstract, providing cross-slide context to every page.
+                </span>
+              </div>
+            </label>
+          </div>
         </section>
 
         <aside className="border border-black bg-neutral-50 p-6">
           <h2 className="mb-4 text-lg font-semibold text-black">Pipeline</h2>
           <ol className="space-y-3 text-sm text-neutral-800">
-            <li className="border-b border-neutral-300 pb-3">1. render pages to images</li>
-            <li className="border-b border-neutral-300 pb-3">2. ask the vision model for semantic HTML</li>
-            <li className="border-b border-neutral-300 pb-3">3. crop figures and attach alt text</li>
-            <li className="border-b border-neutral-300 pb-3">4. run axe-core and repair issues</li>
-            <li>5. export one standalone HTML file</li>
+            <li className="border-b border-neutral-300 pb-3">1. render pages & extract full text</li>
+            <li className="border-b border-neutral-300 pb-3">2. generate global context & summary</li>
+            <li className="border-b border-neutral-300 pb-3">3. vision model generates semantic HTML</li>
+            <li className="border-b border-neutral-300 pb-3">4. crop figures and attach alt text</li>
+            <li className="border-b border-neutral-300 pb-3">5. run axe-core and repair issues</li>
+            <li>6. export standalone accessible HTML</li>
           </ol>
         </aside>
       </main>
 
-      <footer className="mt-8 flex flex-wrap gap-4 border-t border-black pt-5 text-sm">
-        <button onClick={onShowDocs} className="underline underline-offset-4 hover:no-underline">how to use</button>
-        <a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:no-underline">
-          WCAG 2.2 AA
-        </a>
-        <span className="text-neutral-500">v1.0.0</span>
+      <footer className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-black pt-5 text-sm">
+        <div className="flex flex-wrap gap-4">
+          <button onClick={onShowDocs} className="underline underline-offset-4 hover:no-underline">how to use</button>
+          <a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 hover:no-underline">
+            WCAG 2.2 AA
+          </a>
+          <span className="text-neutral-500">v1.0.0</span>
+        </div>
+        <p className="text-xs text-neutral-600">
+          Influenced by Professor Kuan-Hua Chen&apos;s{' '}
+          <a
+            href="https://drjchen1.github.io/chenflix/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 text-black hover:no-underline"
+          >
+            Q.E.D. program
+          </a>
+        </p>
       </footer>
     </div>
   );

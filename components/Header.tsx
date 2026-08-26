@@ -9,7 +9,7 @@ const Header: React.FC<HeaderProps> = ({ onShowDocs }) => {
     <header className="sticky top-0 z-40 border-b border-black bg-white">
       <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-4">
         <a href="/" className="font-mono text-sm font-semibold text-black no-underline">
-          qed.html
+          AccessDocs
         </a>
         <nav className="flex items-center gap-4 text-sm">
           <button onClick={onShowDocs} className="text-black underline underline-offset-4 hover:no-underline">

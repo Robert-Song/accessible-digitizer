@@ -8,7 +8,9 @@
     "proxy": "node server/proxy.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --test tests/model-json.test.mjs",
+    "test:browser": "node tests/browser-regressions.mjs"
   },
   "dependencies": {
     "axe-core": "^4.10.3",

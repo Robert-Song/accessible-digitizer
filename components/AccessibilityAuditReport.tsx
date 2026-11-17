@@ -47,13 +47,14 @@ const AccessibilityAuditReport: React.FC<AccessibilityAuditReportProps> = ({ res
         <div className="border-b border-black p-5">
           <div className="mb-2 flex justify-between text-sm">
             <span>automated score</span>
-            <strong>{activeAudit?.score ?? 0}%</strong>
+            <strong>{activeAudit ? `${activeAudit.score}%` : 'Not audited'}</strong>
           </div>
           <div className="h-4 border border-black">
             <div className="h-full bg-black" style={{ width: `${activeAudit?.score || 0}%` }} />
           </div>
           <p className="mt-3 text-sm text-neutral-700">
-            {activeAudit?.passed ? 'No automated WCAG AA violations found.' : 'Some automated checks still need review.'}
+            {!activeAudit ? 'No current audit. The content may have changed since the previous audit.'
+              : activeAudit.passed ? 'Automated checks passed; content quality still needs review.' : 'Some automated checks still need review.'}
           </p>
         </div>
 

@@ -56,12 +56,12 @@ const ResultsView: React.FC<ResultsViewProps> = ({
         <section className="border border-black bg-white p-4">
           <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-widest">audit</h2>
           <p className="mb-3 text-sm">
-            score: <strong>{activeAudit?.score ?? 0}%</strong>
+            score: <strong>{activeAudit ? `${activeAudit.score}%` : 'not audited'}</strong>
           </p>
           <p className="mb-4 text-sm leading-6 text-neutral-700">
-            {activeAudit?.passed
-              ? 'No automated WCAG AA violations found.'
-              : `${activeAudit?.violations.length || 0} automated issue(s) need review.`}
+            {!activeAudit ? 'Content changed or has not been audited. Refine math to run a new audit.'
+              : activeAudit.passed ? 'Automated checks passed; content quality still needs review.'
+              : `${activeAudit.violations.length} axe violation(s), ${activeAudit.checks.filter(c => !c.passed && c.title !== 'Axe WCAG AA').length} failed custom check(s), and ${activeAudit.incomplete.length} incomplete check(s) need review.`}
           </p>
           <div className="mb-4 h-3 border border-black">
             <div className="h-full bg-black" style={{ width: `${activeAudit?.score || 0}%` }} />

@@ -29,20 +29,20 @@ const getStatusBadge = (status: PageProgressInfo['status']) => {
       return {
         label: 'Vision OCR',
         className: 'bg-blue-50 text-blue-800 border-blue-600 animate-pulse',
-        icon: '⚡'
+        icon: null
       };
     case 'cropping':
       return {
         label: 'Figures',
         className: 'bg-amber-50 text-amber-800 border-amber-600 animate-pulse',
-        icon: '✂'
+        icon: null
       };
     case 'auditing':
     case 'repairing':
       return {
         label: 'WCAG Audit',
         className: 'bg-purple-50 text-purple-800 border-purple-600 animate-pulse',
-        icon: '♿'
+        icon: null
       };
     case 'error':
       return {
@@ -55,7 +55,7 @@ const getStatusBadge = (status: PageProgressInfo['status']) => {
       return {
         label: 'Queued',
         className: 'bg-neutral-100 text-neutral-600 border-neutral-300',
-        icon: '⋯'
+        icon: null
       };
   }
 };
@@ -96,7 +96,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
               </span>
             )}
             <span className="font-mono text-xs font-semibold text-neutral-600 bg-neutral-100 border border-neutral-300 px-2.5 py-1 rounded">
-              ⏱ {formatSeconds(elapsedTime)}
+              {formatSeconds(elapsedTime)}
             </span>
           </div>
         </div>
@@ -172,7 +172,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
                       </span>
                     </div>
                     <span className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-[10px] font-semibold ${badge.className}`}>
-                      <span>{badge.icon}</span>
+                      {badge.icon && <span>{badge.icon}</span>}
                       <span>{badge.label}</span>
                     </span>
                   </div>

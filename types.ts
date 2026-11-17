@@ -38,6 +38,7 @@ export interface AccessibilityAudit {
     passed: boolean;
     description: string;
     suggestion?: string;
+    repairable?: boolean;
   }[];
   violations: AccessibilityViolation[];
   incomplete: AccessibilityViolation[];
@@ -58,6 +59,13 @@ export interface AccessibilityViolation {
   helpUrl?: string;
   tags: string[];
   nodes: AccessibilityViolationNode[];
+}
+
+export interface TableIssue {
+  tableIndex: number;
+  caption: string;
+  htmlSnippet: string;
+  reason: string;
 }
 
 export interface FigureResult {

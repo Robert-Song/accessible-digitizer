@@ -137,7 +137,9 @@ const App: React.FC = () => {
     <title>${extractedTitle} - AccessDocs</title>
     <script>
         window.MathJax = {
+          loader: { load: ['[tex]/textmacros'] },
           tex: {
+            packages: { '[+]': ['textmacros'] },
             inlineMath: [['\\\\(', '\\\\)']],
             displayMath: [['\\\\[', '\\\\]']],
             processEscapes: true
@@ -283,6 +285,18 @@ const App: React.FC = () => {
             font-size: 1.05rem; /* >= 12pt */
         }
         tbody tr:hover td { background: var(--bg-soft); }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
 
         mjx-container[display="true"] {
             display: block;

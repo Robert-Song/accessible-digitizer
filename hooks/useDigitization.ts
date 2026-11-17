@@ -2,8 +2,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppState, ConversionResult, DigitizationOptions, LanguageLevel, PageProcessingStatus, PageProgressInfo } from '../types';
 import { pdfToImageData } from '../services/pdfService';
-import { convertPageToHtml, getAiCapabilities, refineLatex, repairAccessibility, summarizeDocumentText } from '../services/aiService';
-import { runAccessibilityAudit, sanitizeGeneratedHtml } from '../utils/accessibility';
+import { convertPageToHtml, getAiCapabilities, refineLatex, summarizeDocumentText } from '../services/aiService';
+import { runAccessibilityAudit } from '../utils/accessibility';
+import { auditAndRepair } from '../services/accessibilityPipeline';
 import { cropImage } from '../utils/image';
 import { cleanAltText } from '../utils/dom';
 
@@ -84,23 +85,11 @@ export const useDigitization = () => {
   }, []);
 
   const auditAndRepairHtml = useCallback(async (html: string, pageNumber: number) => {
-    let finalHtml = sanitizeGeneratedHtml(html);
-    let audit = await runAccessibilityAudit(finalHtml);
-
-    for (let attempt = 0; attempt < 2 && audit.violations.length > 0; attempt++) {
-      updatePageProgress(pageNumber, 'repairing', `Repairing WCAG (${attempt + 1}/2)`);
-      try {
-        const repair = await repairAccessibility(finalHtml, audit);
-        incrementUsage();
-        finalHtml = sanitizeGeneratedHtml(repair.html);
-        audit = await runAccessibilityAudit(finalHtml);
-      } catch (error) {
-        console.warn(`Accessibility repair failed for page ${pageNumber}:`, error);
-        break;
-      }
-    }
-
-    return { html: finalHtml, audit };
+    return auditAndRepair(html, {
+      requireH1: pageNumber === 1,
+      onRepair: attempt => updatePageProgress(pageNumber, 'repairing', `Repairing accessibility (${attempt}/2)`),
+      onRequest: incrementUsage
+    });
   }, [incrementUsage, updatePageProgress]);
 
   const handleFileUpload = async (file: File, optionsInput: DigitizationOptions | LanguageLevel) => {
@@ -319,7 +308,7 @@ export const useDigitization = () => {
       const docTitleHeading = new DOMParser().parseFromString(sortedResults[0]?.html || '', 'text/html').querySelector('h1, h2');
       const mainDocTitle = docTitleHeading?.textContent?.trim() || '';
 
-      const harmonizedResults = sortedResults.map((r, idx) => {
+      const harmonizedResults = await Promise.all(sortedResults.map(async (r, idx) => {
         const pageParser = new DOMParser();
         const pageDoc = pageParser.parseFromString(r.html, 'text/html');
 
@@ -342,18 +331,20 @@ export const useDigitization = () => {
           });
         }
 
+        const html = pageDoc.body.innerHTML;
         return {
           ...r,
-          html: pageDoc.body.innerHTML
+          html,
+          audit: html === r.html ? r.audit : await runAccessibilityAudit(html, { requireH1: idx === 0 })
         };
-      });
+      }));
 
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
 
       setState(prev => ({
         ...prev,
         isProcessing: false,
-        statusMessage: 'Digitization Complete! Your accessible document is ready.',
+        statusMessage: 'Digitization complete. Review the accessibility reports before sharing.',
         progress: 100,
         totalTime,
         activeConcurrencyCount: 0,
@@ -446,6 +437,7 @@ export const useDigitization = () => {
             figcaption.innerHTML = `Figure: ${newAlt || updatedFig.alt}`;
 
             page.html = doc.body.innerHTML;
+            page.audit = undefined;
           }
           newResults[pageIndex] = page;
         }
